@@ -209,3 +209,5 @@ __marimo__/
 data
 reddit-dumps
 processed_data
+**/.bundle
+**/node_modules
