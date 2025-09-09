@@ -1,0 +1,18 @@
+dask
+pandas
+zstandard
+jupyterlab
+elasticsearch-dsl
+qdrant-client
+google-generativeai
+torch
+transformers
+sentence-transformers
+cuml-cu12 --extra-index-url https://pypi.nvidia.com
+orjson
+bokeh>=3.1.0
+dask-cuda
+python-dotenv
+aiohttp
+fastapi
+uvicorn
