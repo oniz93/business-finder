@@ -3,160 +3,234 @@ version = sys.version_info
 if version.major < 3 or (version.major == 3 and version.minor < 10):
     raise RuntimeError("This script requires Python 3.10 or higher")
 import os
-from typing import Iterable, Optional
-import pandas as pd # Import pandas for to_parquet
-import dask.dataframe as dd # Use dask.dataframe for to_parquet
+import time
+from typing import List, Dict, Any, Optional
+import pandas as pd
+from src.fileStreams import getFileJsonStream
+from dask_cuda import LocalCUDACluster
+from dask.distributed import Client, as_completed
+from dask.diagnostics import ProgressBar
+from transformers import pipeline
+import multiprocessing as mp
+import pprint
 
-from src.fileStreams import getFileJsonStream # Adjusted import path
-# from src.utils import FileProgressLog # Commenting out as it's not compatible with Dask Bag's parallel processing
-import dask.bag as db
-from dask_cuda import LocalCUDACluster # Import LocalCUDACluster
-from dask.distributed import Client # Keep Client for connecting to the cluster
-from transformers import pipeline # Import pipeline for zero-shot classification
-
-# Set environment variable for PyTorch memory allocation
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
-# Global variable for the file path, will be set in main
-file_to_process = ""
-output_parquet_dir = "/home/coinsafe/business-finder/processed_data/filtered_comments" # Define output directory
+# --- Configuration ---
+N_CPU_WORKERS = 20
+RAW_QUEUE_SIZE = 200000
+FILTERED_QUEUE_SIZE = 200000
+LOG_INTERVAL = 20000
+NLP_BATCH_SIZE = 1000
 
-# Initialize the zero-shot classification pipeline globally, but it will be created per worker
-# This is a common pattern for Dask + Transformers to avoid re-downloading models
-# and to ensure the model is loaded on the correct device within each worker.
-# The actual pipeline object will be created inside the classify_and_filter_comment function
-# when it's executed on a Dask worker.
+file_to_process = ""
+output_parquet_dir = "/home/coinsafe/business-finder/processed_data/filtered_comments"
+
+# --- Globals for Models and Keywords ---
 _classifier = None
 _candidate_labels = ["pain_point", "idea"]
 _pain_point_keywords = ["frustrating", "problem", "difficult", "struggle", "annoying", "wish", "need", "can't", "should be", "hard to", "lack of", "missing", "broken"]
 _idea_keywords = ["idea", "solution", "concept", "opportunity", "build", "create", "develop", "imagine", "what if", "improve", "new way", "innovate"]
 
-
 def get_classifier():
-    global _classifier
-    if _classifier is None:
-        # Initialize the zero-shot classification pipeline
-        # Using a smaller model: typeform/distilbert-base-uncased-mnli
-        _classifier = pipeline("zero-shot-classification", model="typeform/distilbert-base-uncased-mnli", device=0) # device=0 for the first GPU on each worker
-    return _classifier
+    from dask.distributed import get_worker
+    try:
+        worker = get_worker()
+        if not hasattr(worker, 'classifier'):
+            # Dask-CUDA sets this environment variable for each worker
+            cuda_device_index = os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")[0]
+            device = int(cuda_device_index)
+            print(f"[GPU Worker {worker.name}] Initializing classifier on device: {device}")
+            worker.classifier = pipeline("zero-shot-classification", model="typeform/distilbert-base-uncased-mnli", device=device)
+        return worker.classifier
+    except (ValueError, ImportError):
+        # This code runs on the main process (local fallback)
+        print("[Local] Initializing classifier on device 0 (fallback)")
+        global _classifier
+        if '_classifier' not in globals() or _classifier is None:
+            _classifier = pipeline("zero-shot-classification", model="typeform/distilbert-base-uncased-mnli", device=0)
+        return _classifier
 
-def classify_and_filter_comment(row):
-    # Get the classifier instance for this worker
+# --- Pipeline Stage 1: Decompression ---
+def producer(queue: mp.Queue, path: str, limit: Optional[int], num_consumers: int):
+    print(f"[Producer] Starting data ingestion for {num_consumers} consumer(s)પૂર્ણ...")
+    count = 0
+    start_time = time.time()
+    try:
+        with open(path, "rb") as f:
+            json_stream_generator = getFileJsonStream(path, f, max_items=limit)
+            if json_stream_generator:
+                for item in json_stream_generator:
+                    queue.put(item)
+                    count += 1
+                    if count % LOG_INTERVAL == 0:
+                        elapsed = time.time() - start_time
+                        rate = count / elapsed if elapsed > 0 else 0
+                        print(f"[Producer] Ingested {count:,} items ({rate:,.0f} items/sec)")
+    finally:
+        print(f"[Producer] Finished ingesting {count:,} total items. Signaling end to CPU workers.")
+        for _ in range(num_consumers):
+            queue.put(None)
+
+# --- Pipeline Stage 2: CPU Filtering ---
+def cpu_filter_worker(raw_q: mp.Queue, filtered_q: mp.Queue):
+    pid = os.getpid()
+    processed_count = 0
+    forwarded_count = 0
+    while True:
+        item = raw_q.get()
+        if item is None:
+            break
+        
+        processed_count += 1
+        body = item.get("body", "")
+        if body and len(body) > 50:
+            if any(keyword in body.lower() for keyword in _pain_point_keywords) or \
+               any(keyword in body.lower() for keyword in _idea_keywords):
+                filtered_q.put(item)
+                forwarded_count += 1
+        
+        if processed_count % LOG_INTERVAL == 0:
+            print(f"[CPU-Filter-{pid}] Processed: {processed_count:,}, Forwarded: {forwarded_count:,}")
+
+    print(f"[CPU-Filter-{pid}] Shutting down. Processed {processed_count:,} total. Forwarded {forwarded_count:,} total.")
+    filtered_q.put(None)
+
+# --- Pipeline Stage 3: GPU Classification ---
+def nlp_classify_batch(batch: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     classifier = get_classifier()
+    final_results = []
+    texts_to_classify = [row.get("body", "") for row in batch]
     
-    body = row.get("body", "")
+    worker_name = "local"
+    try:
+        from dask.distributed import get_worker
+        worker_name = get_worker().name
+    except (ValueError, ImportError):
+        pass
+
+    try:
+        classification_results_list = classifier(texts_to_classify, _candidate_labels)
+    except Exception as e:
+        print(f"[GPU Worker {worker_name}] Error during batch NLP classification: {e}")
+        return []
+
+    for i, row in enumerate(batch):
+        classification_results = classification_results_list[i]
+        top_label = classification_results['labels'][0]
+        top_score = classification_results['scores'][0]
+
+        if top_score > 0.7:
+            final_results.append({
+                "id": row.get("id"), "link_id": row.get("link_id"),
+                "author": row.get("author"), "subreddit": row.get("subreddit"),
+                "created_utc": row.get("created_utc"), "body": row.get("body"),
+                "is_pain_point": (top_label == "pain_point"),
+                "is_idea": (top_label == "idea"),
+                "nlp_top_label": top_label, "nlp_top_score": top_score
+            })
     
-    # Apply initial rule-based filter
-    is_rule_pain_point = any(keyword in body.lower() for keyword in _pain_point_keywords)
-    is_rule_idea = any(keyword in body.lower() for keyword in _idea_keywords)
-
-    if not (is_rule_pain_point or is_rule_idea):
-        return None # Skip if not initially classified by rules
-
-    # Perform zero-shot classification
-    # Only classify if the body is not empty and has some reasonable length
-    if body and len(body) > 50: # Minimum length for meaningful classification
-        try:
-            # The zero-shot classifier expects a list of sequences
-            # and returns a list of dictionaries.
-            classification_results = classifier(body, _candidate_labels)
+    if len(batch) > 0:
+        print(f"[GPU Worker {worker_name}] Classified a batch of {len(batch):,} items, yielding {len(final_results):,} results.")
             
-            # Get the top label and its score
-            top_label = classification_results['labels'][0]
-            top_score = classification_results['scores'][0]
+    return final_results
 
-            # Threshold the score to ensure confidence
-            if top_score > 0.7: # Example threshold, can be adjusted
-                is_nlp_pain_point = (top_label == "pain_point")
-                is_nlp_idea = (top_label == "idea")
-            else:
-                is_nlp_pain_point = False
-                is_nlp_idea = False
-
-            # Combine rule-based and NLP classification
-            # A comment is a pain point if either rule-based or NLP says so
-            # and similarly for idea. Prioritize NLP if confident.
-            final_is_pain_point = is_rule_pain_point or is_nlp_pain_point
-            final_is_idea = is_rule_idea or is_nlp_idea
-
-            if final_is_pain_point or final_is_idea:
-                return {
-                    "id": row.get("id"),
-                    "link_id": row.get("link_id"),
-                    "author": row.get("author"),
-                    "subreddit": row.get("subreddit"),
-                    "created_utc": row.get("created_utc"),
-                    "body": body,
-                    "is_pain_point": final_is_pain_point,
-                    "is_idea": final_is_idea,
-                    "nlp_top_label": top_label,
-                    "nlp_top_score": top_score
-                }
-        except Exception as e:
-            print(f"Error during NLP classification for row: {row.get('id')}. Error: {e}")
-            return None
-    return None
-
-
+# --- Main Orchestrator ---
 def process_single_file_with_dask(path: str, limit: Optional[int] = None):
-    print(f"Processing file {path} with Dask Bag...\n")
+    print(f"Starting 3-stage pipeline for file: {path}...")
+    print(f"CPU Filter Workers: {N_CPU_WORKERS}, GPU Workers: 4, NLP Batch Size: {NLP_BATCH_SIZE}")
 
-    # Initialize a LocalCUDACluster to utilize GPUs
-    # n_workers will default to the number of available GPUs
-    cluster = LocalCUDACluster()
+    raw_data_queue = mp.Queue(maxsize=RAW_QUEUE_SIZE)
+    filtered_data_queue = mp.Queue(maxsize=FILTERED_QUEUE_SIZE)
+
+    producer_proc = mp.Process(target=producer, args=(raw_data_queue, path, limit, N_CPU_WORKERS))
+    
+    cpu_workers = []
+    for _ in range(N_CPU_WORKERS):
+        p = mp.Process(target=cpu_filter_worker, args=(raw_data_queue, filtered_data_queue))
+        cpu_workers.append(p)
+
+    # Definitive cluster configuration
+    cluster = LocalCUDACluster(n_workers=4, threads_per_worker=5, resources={"GPU": 1})
     client = Client(cluster)
     print(f"Dask dashboard link: {client.dashboard_link}\n")
 
     try:
-        # Open the file and get the generator, passing the limit directly
-        with open(path, "rb") as f:
-            json_stream_generator = getFileJsonStream(path, f, max_items=limit) # Pass max_items here
-            if json_stream_generator is None:
-                print(f"Skipping unknown file {path}")
-                return
+        producer_proc.start()
+        for p in cpu_workers:
+            p.start()
 
-            # Create a Dask Bag from the generator.
-            bag = db.from_sequence(json_stream_generator, npartitions=20) # npartitions can be adjusted based on data size and cluster
+        futures = []
+        batch = []
+        sentinels_received = 0
+        
+        print("[Orchestrator] Starting to listen for filtered data to submit to GPUs...")
+        while sentinels_received < N_CPU_WORKERS:
+            item = filtered_data_queue.get()
+            if item is None:
+                sentinels_received += 1
+                print(f"[Orchestrator] Received sentinel {sentinels_received}/{N_CPU_WORKERS}.")
+                continue
+            
+            batch.append(item)
 
-            # Apply classification and filter out non-classified comments
-            classified_data_bag = bag.map(classify_and_filter_comment).filter(lambda x: x is not None)
+            if len(batch) >= NLP_BATCH_SIZE:
+                print(f"[Orchestrator] Batch of {len(batch)} items ready. Submitting as smaller chunks...")
+                # Split the large batch into smaller chunks for better parallelism
+                chunk_size = 100
+                for i in range(0, len(batch), chunk_size):
+                    chunk = batch[i:i + chunk_size]
+                    if chunk:
+                        future = client.submit(nlp_classify_batch, chunk, resources={'GPU': 1})
+                        futures.append(future)
+                
+                batch = [] # Reset batch
 
-            # Convert Dask Bag to Dask DataFrame for Parquet output
-            # Define meta for the DataFrame to help Dask infer types
-            meta = {
-                "id": str,
-                "link_id": str,
-                "author": str,
-                "subreddit": str,
-                "created_utc": int,
-                "body": str,
-                "is_pain_point": bool,
-                "is_idea": bool,
-                "nlp_top_label": str,
-                "nlp_top_score": float
-            }
-            classified_data_df = classified_data_bag.to_dataframe(meta=meta)
+        if batch:
+            # Submit any remaining items as a final batch
+            chunk_size = 100
+            for i in range(0, len(batch), chunk_size):
+                chunk = batch[i:i + chunk_size]
+                if chunk:
+                    future = client.submit(nlp_classify_batch, chunk, resources={'GPU': 1})
+                    futures.append(future)
 
-            # Create output directory if it doesn't exist
-            os.makedirs(output_parquet_dir, exist_ok=True)
+        print(f"\n[Orchestrator] All data submitted. Total futures: {len(futures):,}. Waiting for results...")
+        
+        all_results = []
+        with ProgressBar(futures) as bar:
+            for future in as_completed(futures):
+                result_batch = future.result()
+                if result_batch:
+                    all_results.extend(result_batch)
 
-            print(f"Writing classified data to Parquet files in {output_parquet_dir}...\n")
-            # Write to Parquet files
-            classified_data_df.to_parquet(output_parquet_dir, engine='pyarrow', write_metadata_file=True)
-            print("Finished writing classified data to Parquet.\n")
+        print(f"\n[Orchestrator] All {len(futures):,} futures completed. Total results: {len(all_results):,}")
 
-            # For verification, let's count the items written
-            count = classified_data_df.shape[0].compute()
-            print(f"\nSuccessfully processed, classified, and saved {count} items to Parquet.\n")
+        if not all_results:
+            print("[Orchestrator] No results to save. Exiting.")
+            return
+
+        df = pd.DataFrame(all_results)
+        os.makedirs(output_parquet_dir, exist_ok=True)
+        output_file = os.path.join(output_parquet_dir, "filtered_data.parquet")
+        print(f"\n[Orchestrator] Writing {len(df):,} records to {output_file}...\n")
+        df.to_parquet(output_file, engine='pyarrow')
+        print("\n[Orchestrator] Finished writing classified data to Parquet.\n")
 
     finally:
+        print("[Orchestrator] Cleaning up resources...")
+        producer_proc.join()
+        print("[Orchestrator] Producer process joined.")
+        for p in cpu_workers:
+            p.join()
+        print("[Orchestrator] All CPU filter workers joined.")
+        
         client.close()
         cluster.close()
-        print("Dask cluster closed.\n")
+        print("[Orchestrator] Dask cluster closed.\n")
 
 def main():
     global file_to_process
-    # Set the path to the specific .zst file
     file_to_process = "/home/coinsafe/business-finder/reddit-dumps/reddit/comments/RC_2025-07.zst"
 
     if not os.path.exists(file_to_process):
@@ -164,10 +238,10 @@ def main():
         print("You can download the data using the torrent file: /home/coinsafe/business-finder/reddit-dumps/reddit-b6a7ccf72368a7d39c018c423e01bc15aa551122.torrent")
         return
 
-    # For testing, limit to 10000 messages as requested by the user
     process_single_file_with_dask(file_to_process, limit=None)
     
     print("Data ingestion, filtering, and classification phase complete.\n")
 
 if __name__ == "__main__":
+    mp.set_start_method("forkserver")
     main()
