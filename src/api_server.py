@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from elasticsearch import AsyncElasticsearch
 from qdrant_client import QdrantClient, models
 from typing import List, Dict, Any, Optional
@@ -14,6 +15,14 @@ QDRANT_PORT = 6333
 QDRANT_BUSINESS_PLANS_COLLECTION = "business_plans_embeddings"
 
 app = FastAPI(title="Business Plan API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 es_client: Optional[AsyncElasticsearch] = None
 qdrant_client: Optional[QdrantClient] = None

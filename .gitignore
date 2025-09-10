@@ -211,3 +211,5 @@ reddit-dumps
 processed_data
 **/.bundle
 **/node_modules
+
+crypto

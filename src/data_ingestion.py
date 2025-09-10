@@ -7,53 +7,91 @@ import time
 from typing import List, Dict, Any, Optional
 import pandas as pd
 from src.fileStreams import getFileJsonStream
-from dask_cuda import LocalCUDACluster
-from dask.distributed import Client, as_completed
-from dask.diagnostics import ProgressBar
 from transformers import pipeline
 import multiprocessing as mp
 import pprint
+import numba.cuda as cuda
+from itertools import cycle
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 # --- Configuration ---
-N_CPU_WORKERS = 20
+N_CPU_WORKERS = 40
+N_GPU_WORKERS = 12 # One worker process per GPU
+N_GPUS = 4
 RAW_QUEUE_SIZE = 200000
 FILTERED_QUEUE_SIZE = 200000
 LOG_INTERVAL = 20000
-NLP_BATCH_SIZE = 1000
+NLP_BATCH_SIZE = 3000
 
 file_to_process = ""
 output_parquet_dir = "/home/coinsafe/business-finder/processed_data/filtered_comments"
 
 # --- Globals for Models and Keywords ---
-_classifier = None
 _candidate_labels = ["pain_point", "idea"]
 _pain_point_keywords = ["frustrating", "problem", "difficult", "struggle", "annoying", "wish", "need", "can't", "should be", "hard to", "lack of", "missing", "broken"]
 _idea_keywords = ["idea", "solution", "concept", "opportunity", "build", "create", "develop", "imagine", "what if", "improve", "new way", "innovate"]
 
-def get_classifier():
-    from dask.distributed import get_worker
+# --- GPU Worker Functions ---
+
+# Each worker process will have its own classifier instance
+_worker_classifier = None
+
+def get_classifier(gpu_id: int):
+    gpu_id = gpu_id % N_GPUS
+    """Initializes a classifier pipeline on a specific GPU for a worker process."""
+    global _worker_classifier
+    if _worker_classifier is None:
+        print(f"[GPU-Worker-{gpu_id}] Initializing classifier on device: {gpu_id}")
+        cuda.select_device(gpu_id)
+        _worker_classifier = pipeline("zero-shot-classification", model="typeform/distilbert-base-uncased-mnli", device=gpu_id)
+    return _worker_classifier
+
+def nlp_classify_batch_worker(batch: List[Dict[str, Any]], gpu_id: int) -> List[Dict[str, Any]]:
+    """The target function for each GPU worker process."""
+    classifier = get_classifier(gpu_id)
+    final_results = []
+    texts_to_classify = [row.get("body", "") for row in batch]
+
+    # Create a simple generator dataset to follow Hugging Face recommendation
+    def text_generator(texts):
+        for text in texts:
+            yield text
+
+    dataset = text_generator(texts_to_classify)
+    
     try:
-        worker = get_worker()
-        if not hasattr(worker, 'classifier'):
-            # Dask-CUDA sets this environment variable for each worker
-            cuda_device_index = os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")[0]
-            device = int(cuda_device_index)
-            print(f"[GPU Worker {worker.name}] Initializing classifier on device: {device}")
-            worker.classifier = pipeline("zero-shot-classification", model="typeform/distilbert-base-uncased-mnli", device=device)
-        return worker.classifier
-    except (ValueError, ImportError):
-        # This code runs on the main process (local fallback)
-        print("[Local] Initializing classifier on device 0 (fallback)")
-        global _classifier
-        if '_classifier' not in globals() or _classifier is None:
-            _classifier = pipeline("zero-shot-classification", model="typeform/distilbert-base-uncased-mnli", device=0)
-        return _classifier
+        # The pipeline will now pull from the generator, which is more efficient.
+        # It also returns a generator, so we must iterate over it.
+        classification_results_generator = classifier(dataset, candidate_labels=_candidate_labels)
+
+        for i, classification_results in enumerate(classification_results_generator):
+            row = batch[i] # Get the original item by index
+            top_label = classification_results['labels'][0]
+            top_score = classification_results['scores'][0]
+
+            if top_score > 0.7:
+                final_results.append({
+                    "id": row.get("id"), "link_id": row.get("link_id"),
+                    "author": row.get("author"), "subreddit": row.get("subreddit"),
+                    "created_utc": row.get("created_utc"), "body": row.get("body"),
+                    "is_pain_point": (top_label == "pain_point"),
+                    "is_idea": (top_label == "idea"),
+                    "nlp_top_label": top_label, "nlp_top_score": top_score
+                })
+
+    except Exception as e:
+        print(f"[GPU-Worker-{gpu_id}] Error during batch NLP classification: {e}")
+        return []
+    
+    if len(batch) > 0:
+        print(f"[GPU-Worker-{gpu_id}] Classified a batch of {len(batch):,} items, yielding {len(final_results):,} results.")
+            
+    return final_results
 
 # --- Pipeline Stage 1: Decompression ---
 def producer(queue: mp.Queue, path: str, limit: Optional[int], num_consumers: int):
-    print(f"[Producer] Starting data ingestion for {num_consumers} consumer(s)પૂર્ણ...")
+    print(f"[Producer] Starting data ingestion for {num_consumers} consumer(s)...")
     count = 0
     start_time = time.time()
     try:
@@ -71,6 +109,7 @@ def producer(queue: mp.Queue, path: str, limit: Optional[int], num_consumers: in
         print(f"[Producer] Finished ingesting {count:,} total items. Signaling end to CPU workers.")
         for _ in range(num_consumers):
             queue.put(None)
+
 
 # --- Pipeline Stage 2: CPU Filtering ---
 def cpu_filter_worker(raw_q: mp.Queue, filtered_q: mp.Queue):
@@ -96,49 +135,11 @@ def cpu_filter_worker(raw_q: mp.Queue, filtered_q: mp.Queue):
     print(f"[CPU-Filter-{pid}] Shutting down. Processed {processed_count:,} total. Forwarded {forwarded_count:,} total.")
     filtered_q.put(None)
 
-# --- Pipeline Stage 3: GPU Classification ---
-def nlp_classify_batch(batch: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    classifier = get_classifier()
-    final_results = []
-    texts_to_classify = [row.get("body", "") for row in batch]
-    
-    worker_name = "local"
-    try:
-        from dask.distributed import get_worker
-        worker_name = get_worker().name
-    except (ValueError, ImportError):
-        pass
 
-    try:
-        classification_results_list = classifier(texts_to_classify, _candidate_labels)
-    except Exception as e:
-        print(f"[GPU Worker {worker_name}] Error during batch NLP classification: {e}")
-        return []
-
-    for i, row in enumerate(batch):
-        classification_results = classification_results_list[i]
-        top_label = classification_results['labels'][0]
-        top_score = classification_results['scores'][0]
-
-        if top_score > 0.7:
-            final_results.append({
-                "id": row.get("id"), "link_id": row.get("link_id"),
-                "author": row.get("author"), "subreddit": row.get("subreddit"),
-                "created_utc": row.get("created_utc"), "body": row.get("body"),
-                "is_pain_point": (top_label == "pain_point"),
-                "is_idea": (top_label == "idea"),
-                "nlp_top_label": top_label, "nlp_top_score": top_score
-            })
-    
-    if len(batch) > 0:
-        print(f"[GPU Worker {worker_name}] Classified a batch of {len(batch):,} items, yielding {len(final_results):,} results.")
-            
-    return final_results
-
-# --- Main Orchestrator ---
-def process_single_file_with_dask(path: str, limit: Optional[int] = None):
+# --- Main Orchestrator (Refactored with Multiprocessing) ---
+def process_single_file(path: str, limit: Optional[int] = None):
     print(f"Starting 3-stage pipeline for file: {path}...")
-    print(f"CPU Filter Workers: {N_CPU_WORKERS}, GPU Workers: 4, NLP Batch Size: {NLP_BATCH_SIZE}")
+    print(f"CPU Filter Workers: {N_CPU_WORKERS}, GPU Workers: {N_GPU_WORKERS}, NLP Batch Size: {NLP_BATCH_SIZE}")
 
     raw_data_queue = mp.Queue(maxsize=RAW_QUEUE_SIZE)
     filtered_data_queue = mp.Queue(maxsize=FILTERED_QUEUE_SIZE)
@@ -150,17 +151,16 @@ def process_single_file_with_dask(path: str, limit: Optional[int] = None):
         p = mp.Process(target=cpu_filter_worker, args=(raw_data_queue, filtered_data_queue))
         cpu_workers.append(p)
 
-    # Definitive cluster configuration
-    cluster = LocalCUDACluster(n_workers=4, threads_per_worker=5, resources={"GPU": 1})
-    client = Client(cluster)
-    print(f"Dask dashboard link: {client.dashboard_link}\n")
+    # --- Manual GPU Worker Pool Setup ---
+    gpu_pool = mp.Pool(processes=N_GPU_WORKERS)
+    gpu_ids = cycle(range(N_GPU_WORKERS)) # To round-robin tasks to GPUs
 
     try:
         producer_proc.start()
         for p in cpu_workers:
             p.start()
 
-        futures = []
+        async_results = []
         batch = []
         sentinels_received = 0
         
@@ -169,42 +169,32 @@ def process_single_file_with_dask(path: str, limit: Optional[int] = None):
             item = filtered_data_queue.get()
             if item is None:
                 sentinels_received += 1
-                print(f"[Orchestrator] Received sentinel {sentinels_received}/{N_CPU_WORKERS}.")
                 continue
             
             batch.append(item)
 
             if len(batch) >= NLP_BATCH_SIZE:
-                print(f"[Orchestrator] Batch of {len(batch)} items ready. Submitting as smaller chunks...")
-                # Split the large batch into smaller chunks for better parallelism
-                chunk_size = 100
-                for i in range(0, len(batch), chunk_size):
-                    chunk = batch[i:i + chunk_size]
-                    if chunk:
-                        future = client.submit(nlp_classify_batch, chunk, resources={'GPU': 1})
-                        futures.append(future)
-                
+                gpu_id = next(gpu_ids)
+                print(f"[Orchestrator] Batch of {len(batch)} items ready. Submitting to GPU {gpu_id}...")
+                res = gpu_pool.apply_async(nlp_classify_batch_worker, args=(batch, gpu_id))
+                async_results.append(res)
                 batch = [] # Reset batch
 
         if batch:
-            # Submit any remaining items as a final batch
-            chunk_size = 100
-            for i in range(0, len(batch), chunk_size):
-                chunk = batch[i:i + chunk_size]
-                if chunk:
-                    future = client.submit(nlp_classify_batch, chunk, resources={'GPU': 1})
-                    futures.append(future)
+            gpu_id = next(gpu_ids)
+            print(f"[Orchestrator] Submitting final batch of {len(batch)} items to GPU {gpu_id}...")
+            res = gpu_pool.apply_async(nlp_classify_batch_worker, args=(batch, gpu_id))
+            async_results.append(res)
 
-        print(f"\n[Orchestrator] All data submitted. Total futures: {len(futures):,}. Waiting for results...")
+        print(f"\n[Orchestrator] All data submitted. Total batches: {len(async_results):,}. Waiting for results...")
         
         all_results = []
-        with ProgressBar(futures) as bar:
-            for future in as_completed(futures):
-                result_batch = future.result()
-                if result_batch:
-                    all_results.extend(result_batch)
+        for res in async_results:
+            result_batch = res.get()
+            if result_batch:
+                all_results.extend(result_batch)
 
-        print(f"\n[Orchestrator] All {len(futures):,} futures completed. Total results: {len(all_results):,}")
+        print(f"\n[Orchestrator] All {len(async_results):,} batches completed. Total results: {len(all_results):,}")
 
         if not all_results:
             print("[Orchestrator] No results to save. Exiting.")
@@ -219,15 +209,14 @@ def process_single_file_with_dask(path: str, limit: Optional[int] = None):
 
     finally:
         print("[Orchestrator] Cleaning up resources...")
+        gpu_pool.close()
+        gpu_pool.join()
+        print("[Orchestrator] GPU worker pool closed.")
         producer_proc.join()
         print("[Orchestrator] Producer process joined.")
         for p in cpu_workers:
             p.join()
         print("[Orchestrator] All CPU filter workers joined.")
-        
-        client.close()
-        cluster.close()
-        print("[Orchestrator] Dask cluster closed.\n")
 
 def main():
     global file_to_process
@@ -238,10 +227,10 @@ def main():
         print("You can download the data using the torrent file: /home/coinsafe/business-finder/reddit-dumps/reddit-b6a7ccf72368a7d39c018c423e01bc15aa551122.torrent")
         return
 
-    process_single_file_with_dask(file_to_process, limit=None)
+    process_single_file(file_to_process, limit=None) # Renamed function
     
     print("Data ingestion, filtering, and classification phase complete.\n")
 
 if __name__ == "__main__":
-    mp.set_start_method("forkserver")
+    mp.set_start_method("spawn", force=True) # Use spawn for CUDA safety
     main()
