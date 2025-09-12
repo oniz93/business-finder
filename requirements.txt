@@ -16,3 +16,4 @@ python-dotenv
 aiohttp
 fastapi
 uvicorn
+accelerate

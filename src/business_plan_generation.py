@@ -43,18 +43,142 @@ async def generate_business_plan(opportunity_summary: str) -> Dict[str, Any]:
     model = genai.GenerativeModel("models/gemini-2.5-flash-lite")
 
     prompt = f"""
-    Generate a comprehensive business plan based on the following core business opportunity. 
-    The plan should be structured as a JSON object with the following keys:
-    - \"title\": A concise title for the business plan.
-    - \"executive_summary\": A brief overview of the business idea, problem it solves, and solution.
-    - \"problem\": Detailed description of the problem being addressed.
-    - \"solution\": Detailed description of the proposed solution.
-    - \"market_analysis\": Target market, market size, and trends.
-    - \"competition\": Analysis of competitors and competitive advantages.
-    - \"marketing_strategy\": How to reach the target market.
-    - \"management_team\": Key team members and their roles (placeholder if not applicable).
-    - \"financial_projections\": High-level revenue and cost estimates (placeholder if not applicable).
-    - \"call_to_action\": Next steps or what is needed.
+    Generate a comprehensive business plan based on the following core business opportunity.
+    The plan must be structured as a JSON object with the exact structure specified below. Some fields are optional and can be omitted if not applicable, but the overall structure must be maintained.
+
+    Here is a description of each field to guide you:
+    - `title`: A concise and compelling title for the business.
+    - `executive_summary`: A high-level overview of the entire business plan, including the problem, solution, and key business goals.
+    - `problem`: The specific pain point, need, or gap in the market that the business aims to solve.
+    - `solution`: A clear description of the product, service, or platform and how it addresses the identified problem.
+    - `market_analysis`:
+        - `target_market`: The specific demographic, psychographic, and behavioral characteristics of the ideal customer. Can be a string or a list of strings for multiple segments.
+        - `market_size`: An estimate of the total addressable market (TAM), serviceable available market (SAM), and serviceable obtainable market (SOM).
+        - `trends`: Key industry and consumer trends that could impact the business.
+    - `competition`:
+        - `competitors`: A list of known existing or potential competitors.
+        - `direct_competitors`: Competitors offering a very similar solution to the same target market.
+        - `indirect_competitors`: Competitors solving the same core problem but with a different solution.
+        - `competitive_advantages`: The unique features, technology, partnerships, or strategies that give the business an edge.
+    - `marketing_strategy`:
+        - `approach`: The overall philosophy or methodology for marketing (e.g., inbound, growth hacking, community-led).
+        - `channels`: The specific platforms and channels to be used (e.g., "Content Marketing", "SEO", "Twitter", "Reddit").
+        - `content_strategy`: The plan for creating and distributing valuable content to attract and engage the target audience.
+        - `community_building`: Strategies for fostering a community around the product or brand.
+        - `customer_acquisition`: Specific tactics for acquiring new customers.
+        - `digital_marketing`: Strategies for online marketing, including social media, email marketing, and PPC.
+        - `distribution_channels`: How the product or service will be delivered to customers.
+        - `influencer_marketing`: Plans for leveraging influencers to reach a wider audience.
+        - `messaging`: The core messages and brand voice to be used in all communications.
+        - `online_presence`: How the business will be represented online (e.g., website, social media profiles).
+        - `outreach`: Proactive methods for connecting with potential customers, partners, or media.
+        - `outreach_channels`: Specific channels for outreach (e.g., "Cold Email", "LinkedIn Messaging").
+        - `outreach_methods`: The techniques to be used for outreach.
+        - `partnerships`: Potential strategic partnerships to accelerate growth.
+        - `paid_advertising`: The strategy for using paid ad platforms (e.g., "Google Ads", "Facebook Ads").
+        - `pricing_strategy`: How the product or service will be priced.
+        - `public_relations`: Strategies for managing public perception and media relations.
+        - `reach_target_market`: How the marketing efforts will specifically connect with the defined target market.
+        - `retention`: Strategies for keeping customers engaged and loyal.
+        - `seo_optimization`: Plans for optimizing the website and content for search engines.
+        - `value_proposition`: A clear statement of the benefits the business delivers to its customers.
+    - `management_team`:
+        - `placeholder`: A placeholder string if the team is not yet defined (e.g., "Team to be assembled").
+        - `description`: A summary of the team's collective expertise and why they are suited to lead the business.
+        - `founder`, `developer`, `community_manager`: Placeholder roles with a brief bio describing the ideal candidate.
+        - `members`: A list of specific team members and their roles.
+        - `roles`: A list of key roles needed for the business and their responsibilities.
+    - `financial_projections`:
+        - `placeholder`: A placeholder string if detailed financials are not yet available (e.g., "Financial projections to be developed").
+        - `description`: A summary of the financial plan and key assumptions.
+        - `projections`: High-level financial forecasts (e.g., revenue, profit for the first 3-5 years).
+        - `notes`: Important assumptions or disclaimers about the financial projections.
+        - `revenue_streams`: The different ways the business will generate revenue.
+        - `revenue_sources`: Specific sources of income within each revenue stream.
+        - `cost_structure`: An overview of the major fixed and variable costs.
+        - `cost_drivers`: The key factors that influence the costs.
+    - `call_to_action`: The immediate next steps for the business (e.g., "Seeking $50,000 in seed funding", "Build and launch MVP in Q4").
+
+    JSON Structure to be generated:
+    {{
+      "title": "String",
+      "executive_summary": "String",
+      "problem": "String",
+      "solution": "String",
+      "market_analysis": {{
+        "target_market": "String OR Array of Strings",
+        "market_size": "String",
+        "trends": ["String"]
+      }},
+      "competition": {{
+        "competitors": ["String"],
+        "direct_competitors": ["String"],
+        "indirect_competitors": ["String"],
+        "competitive_advantages": ["String"]
+      }},
+      "marketing_strategy": {{
+        "approach": "String",
+        "channels": ["String"],
+        "content_strategy": "String",
+        "community_building": ["String"],
+        "customer_acquisition": ["String"],
+        "digital_marketing": ["String"],
+        "distribution_channels": "String",
+        "influencer_marketing": ["String"],
+        "messaging": "String",
+        "online_presence": "String",
+        "outreach": ["String"],
+        "outreach_channels": ["String"],
+        "outreach_methods": ["String"],
+        "partnerships": ["String"],
+        "paid_advertising": ["String"],
+        "pricing_strategy": "String",
+        "public_relations": ["String"],
+        "reach_target_market": ["String"],
+        "retention": ["String"],
+        "seo_optimization": ["String"],
+        "value_proposition": "String"
+      }},
+      "management_team": {{
+        "placeholder": "String",
+        "description": "String",
+        "founder": {{
+          "role": "String",
+          "bio": "String"
+        }},
+        "developer": {{
+          "role": "String",
+          "bio": "String"
+        }},
+        "community_manager": {{
+          "role": "String",
+          "bio": "String"
+        }},
+        "members": [
+          {{
+            "name": "String",
+            "role": "String"
+          }}
+        ],
+        "roles": [
+          {{
+            "role": "String",
+            "description": "String"
+          }}
+        ]
+      }},
+      "financial_projections": {{
+        "placeholder": "String",
+        "description": "String",
+        "projections": "String",
+        "notes": "String",
+        "revenue_streams": ["String"],
+        "revenue_sources": ["String"],
+        "cost_structure": ["String"],
+        "cost_drivers": ["String"]
+      }},
+      "call_to_action": "String"
+    }}
 
     Core Business Opportunity: {opportunity_summary}
 
