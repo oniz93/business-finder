@@ -8,12 +8,14 @@ google-generativeai
 torch
 transformers
 sentence-transformers
-cuml-cu12 --extra-index-url https://pypi.nvidia.com
+cuml-cu12==25.8.0 --extra-index-url https://pypi.nvidia.com
 orjson
 bokeh>=3.1.0
-dask-cuda
+dask-cuda==25.8.0
 python-dotenv
 aiohttp
 fastapi
 uvicorn
 accelerate
+hdbscan
+joblib

@@ -2,7 +2,6 @@ import os
 import time
 import pandas as pd
 import uuid
-import cuml
 import numpy as np
 from transformers import pipeline, AutoTokenizer
 import torch
@@ -14,19 +13,23 @@ import multiprocessing as mp
 import glob
 import argparse
 
+# cuML and CUDA for GPU-specific tasks
+import cudf
+import cupy as cp
+import numba.cuda as cuda
+from cuml.cluster import KMeans, HDBSCAN
+
 # Load environment variables from .env file
 load_dotenv()
 
 # --- Configuration ---
-N_GPU_WORKERS = 8
 N_GPUS = 8
-
-DATA_QUEUE_SIZE = 10000
+N_GPU_WORKERS = 8 # For summarization and embedding
+KMEANS_N_CLUSTERS_PER_GPU = 12500
 SUMMARY_QUEUE_SIZE = 1000
-
-LOG_INTERVAL = 5000
+DATA_QUEUE_SIZE = 10000
 EMBEDDING_BATCH_SIZE = 128
-QDRANT_BATCH_SIZE = 64
+LOG_INTERVAL = 5000
 
 # --- Paths ---
 PROCESSED_DATA_DIR = "/home/coinsafe/business-finder/processed_data/filtered_comments"
@@ -76,12 +79,9 @@ def embedding_worker(gpu_id: int, data_queue: mp.Queue):
             if len(record_batch) >= EMBEDDING_BATCH_SIZE:
                 texts_to_encode = [rec['body'] for rec in record_batch]
                 embeddings = model.encode(texts_to_encode, convert_to_tensor=True, device=f'cuda:{gpu_id % N_GPUS}')
-                
                 points = [models.PointStruct(id=str(uuid.uuid4().hex), vector=embeddings[i].tolist(), payload=record) for i, record in enumerate(record_batch)]
-
                 if points:
                     qdrant_client.upsert(collection_name=QDRANT_COLLECTION_NAME, points=points, wait=True)
-                
                 processed_count += len(record_batch)
                 if processed_count % LOG_INTERVAL == 0:
                     print(f"[Embed-Worker-{gpu_id}] Processed {processed_count} items.")
@@ -98,6 +98,7 @@ def embedding_worker(gpu_id: int, data_queue: mp.Queue):
 
 def run_phase_1_embedding():
     print("--- Starting Phase 1: Parallel Embedding ---")
+    number_workers = N_GPU_WORKERS * 2
     qdrant_client_main = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
     dummy_model = SentenceTransformer('all-MiniLM-L6-v2')
     vector_size = dummy_model.get_sentence_embedding_dimension()
@@ -106,12 +107,12 @@ def run_phase_1_embedding():
     print(f"Recreating Qdrant collection '{QDRANT_COLLECTION_NAME}' with vector size {vector_size}...")
     qdrant_client_main.recreate_collection(
         collection_name=QDRANT_COLLECTION_NAME,
-        vectors_count=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
+        vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
     )
 
     data_queue = mp.Queue(maxsize=DATA_QUEUE_SIZE)
     embedding_procs = []
-    for i in range(N_GPU_WORKERS):
+    for i in range(number_workers):
         p = mp.Process(target=embedding_worker, args=(i, data_queue))
         embedding_procs.append(p)
         p.start()
@@ -125,88 +126,143 @@ def run_phase_1_embedding():
             data_queue.put(chunk)
     
     print("Finished reading all files. Signaling end to embedding workers.")
-    for _ in range(N_GPU_WORKERS):
+    for _ in range(number_workers):
         data_queue.put(None)
 
     for p in embedding_procs:
         p.join()
     print("--- Embedding Phase Complete ---")
 
-# --- Clustering Function (Phase 2) ---
-MAX_POINTS_FOR_CLUSTERING = 4_000_000
+# --- Phase 2 Worker Function ---
+def kmeans_worker(args):
+    """Worker function to load its own data and run KMeans on a specific GPU."""
+    gpu_id, offset, limit, vector_size = args
+    try:
+        cuda.select_device(gpu_id)
+        print(f"[GPU-{gpu_id}] Worker started. Will load {limit} vectors starting from offset {offset}.")
 
-def run_phase_2_clustering():
-    print("--- Starting Phase 2: Single-Process Clustering (Memory Optimized) ---")
-    qdrant_client_main = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-    
-    print("Getting vector size from model...")
-    dummy_model = SentenceTransformer('all-MiniLM-L6-v2')
-    vector_size = dummy_model.get_sentence_embedding_dimension()
-    del dummy_model
+        qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, timeout=120)
+        worker_embeddings = np.empty((limit, vector_size), dtype=np.float32)
+        worker_point_ids = []
 
-    print("Getting total point count from Qdrant...")
-    collection_info = qdrant_client_main.get_collection(collection_name=QDRANT_COLLECTION_NAME)
-    total_points = collection_info.points_count
-
-    if total_points == 0:
-        print("No points in Qdrant to cluster. Exiting Phase 2.")
-        return
-
-    points_to_process = total_points
-    if total_points > MAX_POINTS_FOR_CLUSTERING:
-        print(f"WARNING: Dataset size ({total_points}) is too large for GPU memory.")
-        print(f"Clustering will be performed on the first {MAX_POINTS_FOR_CLUSTERING} points found.")
-        points_to_process = MAX_POINTS_FOR_CLUSTERING
-
-    print(f"Pre-allocating memory for {points_to_process} vectors...")
-    embeddings_np = np.empty((points_to_process, vector_size), dtype=np.float32)
-    point_ids = []
-    
-    print("Streaming vectors from Qdrant into pre-allocated array...")
-    next_offset = None
-    processed_points = 0
-    while processed_points < points_to_process:
-        limit = min(2000, points_to_process - processed_points)
-        scroll_result, next_offset = qdrant_client_main.scroll(
-            collection_name=QDRANT_COLLECTION_NAME,
+        scroll_result, next_offset = qdrant_client.scroll(
+            collection_name=QDRANT_COLLECTION_NAME, 
             limit=limit,
-            with_payload=False,
-            with_vectors=True,
-            offset=next_offset
+            offset=offset,
+            with_payload=True, 
+            with_vectors=True
         )
-        
+
         if not scroll_result:
-            break
+            print(f"[GPU-{gpu_id}] No data returned from Qdrant.")
+            return None, None, None
 
-        chunk_size = len(scroll_result)
+        num_points_loaded = len(scroll_result)
         for i, point in enumerate(scroll_result):
-            embeddings_np[processed_points + i] = point.vector
-            point_ids.append(point.id)
+            worker_embeddings[i] = point.vector
+            worker_point_ids.append(point.id)
         
-        processed_points += chunk_size
-        print(f"Loaded {processed_points}/{points_to_process} vectors...")
+        if num_points_loaded < limit:
+            print(f"[GPU-{gpu_id}] Loaded {num_points_loaded} which is less than limit {limit}. Slicing array.")
+            worker_embeddings = worker_embeddings[:num_points_loaded]
 
-        if next_offset is None:
-            break
+        print(f"[GPU-{gpu_id}] Successfully loaded {len(worker_embeddings)} vectors.")
 
-    # If we didn't load as many points as we expected, we need to trim the numpy array
-    if processed_points < points_to_process:
-        embeddings_np = embeddings_np[:processed_points]
+        cupy_array = cp.asarray(worker_embeddings)
+        chunk_gdf = cudf.DataFrame(cupy_array)
 
-    print(f"Retrieved {processed_points} embeddings. Starting HDBSCAN clustering...")
-    hdbscan_model = cuml.HDBSCAN(min_cluster_size=5, min_samples=10, alpha=2.0, verbose=True)
-    cluster_labels = hdbscan_model.fit_predict(embeddings_np)
-    print("HDBSCAN clustering complete.")
+        kmeans = KMeans(n_clusters=KMEANS_N_CLUSTERS_PER_GPU, random_state=gpu_id, n_init=1)
+        kmeans.fit(chunk_gdf)
 
-    os.makedirs(CLUSTER_DATA_DIR, exist_ok=True)
-    print(f"Saving cluster assignments to {CLUSTER_ASSIGNMENTS_PATH}...")
-    assignments_df = pd.DataFrame({
-        'point_id': point_ids,
-        'cluster_label': cluster_labels
-    })
-    assignments_df.to_csv(CLUSTER_ASSIGNMENTS_PATH, index=False)
-    
-    print("--- Clustering Phase Complete ---")
+        print(f"[GPU-{gpu_id}] KMeans complete.")
+        return kmeans.labels_.to_numpy(), kmeans.cluster_centers_.to_numpy(), worker_point_ids
+
+    except Exception as e:
+        print(f"[GPU-{gpu_id}] Error in worker: {e}")
+        return None, None, None
+
+N_MAX_POINTS = 16_000
+
+# --- Clustering Function (Phase 2) ---
+def run_phase_2_clustering():
+    print("--- Starting Phase 2: Two-Phase Hybrid Clustering ---")
+
+    try:
+        qdrant_client_main = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        print("Getting total point count from Qdrant...")
+        collection_info = qdrant_client_main.get_collection(collection_name=QDRANT_COLLECTION_NAME)
+        total_points = collection_info.points_count
+        dummy_model = SentenceTransformer('all-MiniLM-L6-v2')
+        vector_size = dummy_model.get_sentence_embedding_dimension()
+        del dummy_model
+
+        if total_points == 0:
+            print("No points in Qdrant to cluster. Exiting Phase 2.")
+            return
+        
+        if total_points > N_MAX_POINTS:
+            total_points = N_MAX_POINTS
+
+        print(f"Total vectors to process: {total_points}")
+
+        print("\n--- Starting Phase 1: Distributed K-Means Summarization ---")
+        
+        points_per_gpu = total_points // N_GPUS
+        tasks = []
+        for i in range(N_GPUS):
+            offset = i * points_per_gpu
+            limit = points_per_gpu
+            if i == N_GPUS - 1:
+                limit = total_points - offset
+            tasks.append((i, offset, limit, vector_size))
+
+        with mp.Pool(processes=N_GPUS) as pool:
+            results = pool.map(kmeans_worker, tasks)
+
+        valid_results = [res for res in results if res[0] is not None]
+        if not valid_results:
+            raise RuntimeError("All KMeans workers failed.")
+            
+        chunk_labels_list = [res[0] for res in valid_results]
+        centroid_chunks_list = [res[1] for res in valid_results]
+        point_id_chunks_list = [res[2] for res in valid_results]
+
+        print("\n--- Starting Phase 2: Centralized HDBSCAN on Centroids ---")
+
+        all_centroids = np.vstack(centroid_chunks_list)
+        print(f"Total number of micro-cluster centroids to cluster: {len(all_centroids)}")
+
+        cuda.select_device(0)
+        print("Running HDBSCAN on GPU 0...")
+        hdbscan = HDBSCAN(min_cluster_size=15, min_samples=10, metric='euclidean')
+        meta_labels = hdbscan.fit_predict(all_centroids)
+        print("HDBSCAN on centroids complete.")
+
+        print("\n--- Mapping meta-clusters back to original data points ---")
+        final_labels = []
+        final_point_ids = []
+        centroid_offset = 0
+        for i in range(len(valid_results)):
+            local_labels = chunk_labels_list[i]
+            num_centroids_in_chunk = len(centroid_chunks_list[i])
+            
+            mapped_labels = [meta_labels[centroid_offset + label] if (centroid_offset + label) < len(meta_labels) else -1 for label in local_labels]
+            final_labels.extend(mapped_labels)
+            final_point_ids.extend(point_id_chunks_list[i])
+            centroid_offset += num_centroids_in_chunk
+
+        final_labels = np.array(final_labels)
+
+        print("\n--- Saving final cluster assignments ---")
+        os.makedirs(CLUSTER_DATA_DIR, exist_ok=True)
+        assignments_df = pd.DataFrame({'point_id': final_point_ids, 'cluster_label': final_labels})
+        assignments_df.to_csv(CLUSTER_ASSIGNMENTS_PATH, index=False)
+        print(f"Final cluster assignments saved to {CLUSTER_ASSIGNMENTS_PATH}")
+
+    except Exception as e:
+        print(f"An error occurred during clustering: {e}")
+    finally:
+        print("--- Clustering Phase Complete ---")
 
 # --- Summarization Worker Functions (Phase 3) ---
 def get_summarization_pipeline(gpu_id):
@@ -217,11 +273,8 @@ def get_summarization_pipeline(gpu_id):
         print(f"[Summary-Worker-{gpu_id}] Initializing model '{model_name}' on GPU: {physical_gpu_id}")
         _tokenizer = AutoTokenizer.from_pretrained(model_name)
         _summarization_pipeline = pipeline(
-            "text-generation",
-            model=model_name,
-            torch_dtype=torch.float16,
-            device_map=f"cuda:{physical_gpu_id}",
-            load_in_4bit=True,
+            "text-generation", model=model_name, torch_dtype=torch.float16,
+            device_map=f"cuda:{physical_gpu_id}", load_in_4bit=True,
         )
     return _summarization_pipeline, _tokenizer
 
@@ -232,30 +285,15 @@ def summarization_worker(gpu_id: int, summary_queue: mp.Queue, result_queue: mp.
 
     while True:
         item = summary_queue.get()
-        if item is None:
-            break
+        if item is None: break
 
         cluster_id, point_ids = item
-        
-        records = qdrant_client.retrieve(
-            collection_name=QDRANT_COLLECTION_NAME,
-            ids=point_ids,
-            with_payload=True
-        )
+        records = qdrant_client.retrieve(collection_name=QDRANT_COLLECTION_NAME, ids=point_ids, with_payload=True)
         texts = [rec.payload['body'] for rec in records]
         sample_texts = texts[:5]
         
-        # Create the formatted string with backslashes before the f-string
         formatted_comments = '\n- '.join(sample_texts)
-
-        prompt = f"""<s>[INST] <<SYS>>
-Your task is to synthesize the provided Reddit comments into a concise 1-2 sentence summary of the core business opportunity or underlying problem.
-<</SYS>>
-
-Comments:
-- {formatted_comments}
-
-Concise Summary: [/INST]"""
+        prompt = f"""<s>[INST] <<SYS>>\nYour task is to synthesize the provided Reddit comments into a concise 1-2 sentence summary of the core business opportunity or underlying problem.\n<</SYS>>\n\nComments:\n- {formatted_comments}\n\nConcise Summary: [/INST]"""
 
         try:
             sequences = summarizer(prompt, do_sample=True, top_k=10, num_return_sequences=1, eos_token_id=tokenizer.eos_token_id, max_length=200)
@@ -270,7 +308,6 @@ Concise Summary: [/INST]"""
 def run_phase_3_summarization():
     print("--- Starting Phase 3: Parallel Summarization ---")
     
-    print(f"Reading cluster assignments from {CLUSTER_ASSIGNMENTS_PATH}...")
     if not os.path.exists(CLUSTER_ASSIGNMENTS_PATH):
         print(f"Error: Cluster assignments file not found. Please run Phase 2 first.")
         return
@@ -310,7 +347,7 @@ def run_phase_3_summarization():
 
 # --- Main Orchestrator ---
 def main():
-    parser = argparse.ArgumentParser(description="Run the embedding, clustering, and summarization pipeline in phases.")
+    parser = argparse.ArgumentParser(description="Run the embedding and clustering pipeline in phases.")
     parser.add_argument('--skip-embedding', action='store_true', help="Skip Phase 1 (Embedding) and start from clustering.")
     parser.add_argument('--skip-clustering', action='store_true', help="Skip Phase 2 (Clustering) and start from summarization.")
     args = parser.parse_args()
@@ -327,7 +364,7 @@ def main():
     else:
         print("--- Skipping Phase 2: Clustering ---")
 
-    run_phase_3_summarization()
+    # run_phase_3_summarization()
 
     end_time = time.time()
     print(f"Pipeline finished in {end_time - start_time:.2f} seconds.")
