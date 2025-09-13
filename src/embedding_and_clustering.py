@@ -1,52 +1,68 @@
+
+
 import os
 import time
 import pandas as pd
 import uuid
 import numpy as np
-from transformers import pipeline, AutoTokenizer
-import torch
-import csv
-from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
-from qdrant_client import QdrantClient, models
+import hdbscan
+import shutil
+import asyncio
+
+from pyspark.sql import SparkSession, Row
+from pyspark.ml.clustering import KMeans
+from pyspark.ml.linalg import Vectors
+from qdrant_client import AsyncQdrantClient, models
+from qdrant_client.http.models import PointStruct, ScrollResult
+from typing import List, Optional, Any
+
 import multiprocessing as mp
 import glob
 import argparse
 
-# cuML and CUDA for GPU-specific tasks
-import cudf
-import cupy as cp
-import numba.cuda as cuda
-from cuml.cluster import KMeans, HDBSCAN
-
-# Load environment variables from .env file
-load_dotenv()
+# For phase 1 and 3, we still need torch and transformers
+import torch
+from transformers import pipeline, AutoTokenizer
+from sentence_transformers import SentenceTransformer
 
 # --- Configuration ---
+# General
 N_GPUS = 8
-N_GPU_WORKERS = 8 # For summarization and embedding
-KMEANS_N_CLUSTERS_PER_GPU = 12500
-SUMMARY_QUEUE_SIZE = 1000
+N_GPU_WORKERS = 8
+
+# Phase 1: Embedding
 DATA_QUEUE_SIZE = 10000
 EMBEDDING_BATCH_SIZE = 128
 LOG_INTERVAL = 5000
 
-# --- Paths ---
-PROCESSED_DATA_DIR = "/home/coinsafe/business-finder/processed_data/filtered_comments"
+# Phase 2: Spark & Clustering
+SPARK_MASTER = "local[*"
+SPARK_APP_NAME = "HybridClustering"
+SPARK_EXECUTOR_MEMORY = "8g"
+SPARK_DRIVER_MEMORY = "8g"
+KMEANS_N_CLUSTERS = 100_000
+HDB_SCAN_MIN_CLUSTER_SIZE = 15
+TEMP_PARQUET_DIR = "/tmp/qdrant_export"
+
+# Phase 3: Summarization
+SUMMARY_QUEUE_SIZE = 1000
+
+# Qdrant config
 QDRANT_HOST = "localhost"
 QDRANT_PORT = 6333
 QDRANT_COLLECTION_NAME = "reddit_ideas_pain_points"
+
+# --- Paths ---
+PROCESSED_DATA_DIR = "/home/coinsafe/business-finder/processed_data/filtered_comments"
 CLUSTER_DATA_DIR = "/home/coinsafe/business-finder/data/clusters"
-CLUSTER_ASSIGNMENTS_PATH = os.path.join(CLUSTER_DATA_DIR, "cluster_assignments.csv")
+CLUSTER_ASSIGNMENTS_PATH = "/home/coinsafe/business-finder/data/clusters/cluster_assignments.csv"
 SUMMARIES_CSV_PATH = "/home/coinsafe/business-finder/summaries.csv"
 
-# --- Worker Globals ---
-_embedding_model = None
-_qdrant_client_worker = None
-_summarization_pipeline = None
-_tokenizer = None
 
 # --- Embedding Worker Functions (Phase 1) ---
+_embedding_model = None
+_qdrant_client_worker = None
+
 def get_embedding_model(gpu_id):
     global _embedding_model
     if _embedding_model is None:
@@ -58,6 +74,7 @@ def get_embedding_model(gpu_id):
 def get_qdrant_client_worker():
     global _qdrant_client_worker
     if _qdrant_client_worker is None:
+        from qdrant_client import QdrantClient
         _qdrant_client_worker = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
     return _qdrant_client_worker
 
@@ -67,33 +84,24 @@ def embedding_worker(gpu_id: int, data_queue: mp.Queue):
     qdrant_client = get_qdrant_client_worker()
     processed_count = 0
     record_batch = []
-
     while True:
         item = data_queue.get()
-        if item is None:
-            break
-
+        if item is None: break
         for index, row in item.iterrows():
             record_batch.append(row.to_dict())
-
             if len(record_batch) >= EMBEDDING_BATCH_SIZE:
                 texts_to_encode = [rec['body'] for rec in record_batch]
                 embeddings = model.encode(texts_to_encode, convert_to_tensor=True, device=f'cuda:{gpu_id % N_GPUS}')
                 points = [models.PointStruct(id=str(uuid.uuid4().hex), vector=embeddings[i].tolist(), payload=record) for i, record in enumerate(record_batch)]
-                if points:
-                    qdrant_client.upsert(collection_name=QDRANT_COLLECTION_NAME, points=points, wait=True)
+                if points: qdrant_client.upsert(collection_name=QDRANT_COLLECTION_NAME, points=points, wait=True)
                 processed_count += len(record_batch)
-                if processed_count % LOG_INTERVAL == 0:
-                    print(f"[Embed-Worker-{gpu_id}] Processed {processed_count} items.")
+                if processed_count % LOG_INTERVAL == 0: print(f"[Embed-Worker-{gpu_id}] Processed {processed_count} items.")
                 record_batch = []
-
     if record_batch:
         texts_to_encode = [rec['body'] for rec in record_batch]
         embeddings = model.encode(texts_to_encode, convert_to_tensor=True, device=f'cuda:{gpu_id % N_GPUS}')
         points = [models.PointStruct(id=str(uuid.uuid4().hex), vector=embeddings[i].tolist(), payload=record) for i, record in enumerate(record_batch)]
-        if points:
-            qdrant_client.upsert(collection_name=QDRANT_COLLECTION_NAME, points=points, wait=True)
-
+        if points: qdrant_client.upsert(collection_name=QDRANT_COLLECTION_NAME, points=points, wait=True)
     print(f"[Embed-Worker-{gpu_id}] Finished.")
 
 def run_phase_1_embedding():
@@ -103,20 +111,17 @@ def run_phase_1_embedding():
     dummy_model = SentenceTransformer('all-MiniLM-L6-v2')
     vector_size = dummy_model.get_sentence_embedding_dimension()
     del dummy_model
-
     print(f"Recreating Qdrant collection '{QDRANT_COLLECTION_NAME}' with vector size {vector_size}...")
     qdrant_client_main.recreate_collection(
         collection_name=QDRANT_COLLECTION_NAME,
         vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
     )
-
     data_queue = mp.Queue(maxsize=DATA_QUEUE_SIZE)
     embedding_procs = []
     for i in range(number_workers):
         p = mp.Process(target=embedding_worker, args=(i, data_queue))
         embedding_procs.append(p)
         p.start()
-
     parquet_files = glob.glob(f"{PROCESSED_DATA_DIR}/**/*.parquet", recursive=True)
     print(f"Found {len(parquet_files)} parquet files to process.")
     for f in parquet_files:
@@ -124,147 +129,116 @@ def run_phase_1_embedding():
         for i in range(0, len(df), EMBEDDING_BATCH_SIZE):
             chunk = df.iloc[i:i+EMBEDDING_BATCH_SIZE]
             data_queue.put(chunk)
-    
     print("Finished reading all files. Signaling end to embedding workers.")
-    for _ in range(number_workers):
-        data_queue.put(None)
-
-    for p in embedding_procs:
-        p.join()
+    for _ in range(number_workers): data_queue.put(None)
+    for p in embedding_procs: p.join()
     print("--- Embedding Phase Complete ---")
 
-# --- Phase 2 Worker Function ---
-def kmeans_worker(args):
-    """Worker function to load its own data and run KMeans on a specific GPU."""
-    gpu_id, offset, limit, vector_size = args
-    try:
-        cuda.select_device(gpu_id)
-        print(f"[GPU-{gpu_id}] Worker started. Will load {limit} vectors starting from offset {offset}.")
 
-        qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, timeout=120)
-        worker_embeddings = np.empty((limit, vector_size), dtype=np.float32)
-        worker_point_ids = []
+# --- Data Extraction Function (for Phase 2) ---
+async def dump_qdrant_to_parquet():
+    """Connects to Qdrant and dumps the entire collection to a directory of Parquet files."""
+    print("--- Starting Data Extraction Phase ---")
+    client = AsyncQdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, timeout=3600)
+    
+    if os.path.exists(TEMP_PARQUET_DIR):
+        print(f"Removing existing temporary directory: {TEMP_PARQUET_DIR}")
+        shutil.rmtree(TEMP_PARQUET_DIR)
+    os.makedirs(TEMP_PARQUET_DIR, exist_ok=True)
 
-        scroll_result, next_offset = qdrant_client.scroll(
-            collection_name=QDRANT_COLLECTION_NAME, 
-            limit=limit,
-            offset=offset,
-            with_payload=True, 
+    current_offset = None
+    batch_num = 0
+    total_points_saved = 0
+
+    while True:
+        print(f"Fetching batch {batch_num}...", end='\r')
+        points, next_offset = await client.scroll(
+            collection_name=QDRANT_COLLECTION_NAME,
+            limit=2000,
+            offset=current_offset,
+            with_payload=True,
             with_vectors=True
         )
 
-        if not scroll_result:
-            print(f"[GPU-{gpu_id}] No data returned from Qdrant.")
-            return None, None, None
+        if not points:
+            break
 
-        num_points_loaded = len(scroll_result)
-        for i, point in enumerate(scroll_result):
-            worker_embeddings[i] = point.vector
-            worker_point_ids.append(point.id)
-        
-        if num_points_loaded < limit:
-            print(f"[GPU-{gpu_id}] Loaded {num_points_loaded} which is less than limit {limit}. Slicing array.")
-            worker_embeddings = worker_embeddings[:num_points_loaded]
+        data = []
+        for point in points:
+            point_data = {
+                "id": point.id,
+                "vector": point.vector
+            }
+            data.append(point_data)
+        df = pd.DataFrame(data)
 
-        print(f"[GPU-{gpu_id}] Successfully loaded {len(worker_embeddings)} vectors.")
+        temp_file_path = os.path.join(TEMP_PARQUET_DIR, f"batch_{batch_num:05d}.parquet")
+        df.to_parquet(temp_file_path, index=False)
+        total_points_saved += len(df)
 
-        cupy_array = cp.asarray(worker_embeddings)
-        chunk_gdf = cudf.DataFrame(cupy_array)
+        current_offset = next_offset
+        batch_num += 1
 
-        kmeans = KMeans(n_clusters=KMEANS_N_CLUSTERS_PER_GPU, random_state=gpu_id, n_init=1)
-        kmeans.fit(chunk_gdf)
+    print(f"\nData extraction complete. Saved {total_points_saved} points to {batch_num} Parquet files in {TEMP_PARQUET_DIR}")
 
-        print(f"[GPU-{gpu_id}] KMeans complete.")
-        return kmeans.labels_.to_numpy(), kmeans.cluster_centers_.to_numpy(), worker_point_ids
-
-    except Exception as e:
-        print(f"[GPU-{gpu_id}] Error in worker: {e}")
-        return None, None, None
-
-N_MAX_POINTS = 16_000
 
 # --- Clustering Function (Phase 2) ---
 def run_phase_2_clustering():
-    print("--- Starting Phase 2: Two-Phase Hybrid Clustering ---")
+    asyncio.run(dump_qdrant_to_parquet())
 
+    print("\n--- Starting Phase 2: Two-Phase Hybrid Clustering with Spark ---")
+    spark = (
+        SparkSession.builder.appName(SPARK_APP_NAME).master(SPARK_MASTER)
+        .config("spark.executor.memory", SPARK_EXECUTOR_MEMORY).config("spark.driver.memory", SPARK_DRIVER_MEMORY)
+        .getOrCreate()
+    )
     try:
-        qdrant_client_main = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-        print("Getting total point count from Qdrant...")
-        collection_info = qdrant_client_main.get_collection(collection_name=QDRANT_COLLECTION_NAME)
-        total_points = collection_info.points_count
-        dummy_model = SentenceTransformer('all-MiniLM-L6-v2')
-        vector_size = dummy_model.get_sentence_embedding_dimension()
-        del dummy_model
+        print(f"Loading data from Parquet files at {TEMP_PARQUET_DIR} into Spark...")
+        df = spark.read.parquet(TEMP_PARQUET_DIR)
+        udf_to_vectors = spark.udf.register("to_vectors", lambda v: Vectors.dense(v), "vector")
+        df = df.withColumn("features", udf_to_vectors(df['vector']))
+        df.cache()
+        print(f"Successfully loaded {df.count()} points into Spark.")
 
-        if total_points == 0:
-            print("No points in Qdrant to cluster. Exiting Phase 2.")
-            return
-        
-        if total_points > N_MAX_POINTS:
-            total_points = N_MAX_POINTS
+        print("\n--- Starting K-Means Summarization ---")
+        kmeans = KMeans(k=KMEANS_N_CLUSTERS, seed=1, featuresCol="features")
+        model = kmeans.fit(df)
+        print("KMeans fitting complete. Collecting centroids.")
+        centroids_np = np.array(model.clusterCenters())
 
-        print(f"Total vectors to process: {total_points}")
-
-        print("\n--- Starting Phase 1: Distributed K-Means Summarization ---")
-        
-        points_per_gpu = total_points // N_GPUS
-        tasks = []
-        for i in range(N_GPUS):
-            offset = i * points_per_gpu
-            limit = points_per_gpu
-            if i == N_GPUS - 1:
-                limit = total_points - offset
-            tasks.append((i, offset, limit, vector_size))
-
-        with mp.Pool(processes=N_GPUS) as pool:
-            results = pool.map(kmeans_worker, tasks)
-
-        valid_results = [res for res in results if res[0] is not None]
-        if not valid_results:
-            raise RuntimeError("All KMeans workers failed.")
-            
-        chunk_labels_list = [res[0] for res in valid_results]
-        centroid_chunks_list = [res[1] for res in valid_results]
-        point_id_chunks_list = [res[2] for res in valid_results]
-
-        print("\n--- Starting Phase 2: Centralized HDBSCAN on Centroids ---")
-
-        all_centroids = np.vstack(centroid_chunks_list)
-        print(f"Total number of micro-cluster centroids to cluster: {len(all_centroids)}")
-
-        cuda.select_device(0)
-        print("Running HDBSCAN on GPU 0...")
-        hdbscan = HDBSCAN(min_cluster_size=15, min_samples=10, metric='euclidean')
-        meta_labels = hdbscan.fit_predict(all_centroids)
+        print("\n--- Starting Centralized HDBSCAN on Centroids ---")
+        print(f"Clustering {len(centroids_np)} centroids with HDBSCAN...")
+        hdbscan_clusterer = hdbscan.HDBSCAN(min_cluster_size=HDB_SCAN_MIN_CLUSTER_SIZE, metric='euclidean')
+        meta_labels = hdbscan_clusterer.fit_predict(centroids_np)
         print("HDBSCAN on centroids complete.")
 
         print("\n--- Mapping meta-clusters back to original data points ---")
-        final_labels = []
-        final_point_ids = []
-        centroid_offset = 0
-        for i in range(len(valid_results)):
-            local_labels = chunk_labels_list[i]
-            num_centroids_in_chunk = len(centroid_chunks_list[i])
-            
-            mapped_labels = [meta_labels[centroid_offset + label] if (centroid_offset + label) < len(meta_labels) else -1 for label in local_labels]
-            final_labels.extend(mapped_labels)
-            final_point_ids.extend(point_id_chunks_list[i])
-            centroid_offset += num_centroids_in_chunk
-
-        final_labels = np.array(final_labels)
+        centroid_map = {i: int(meta_labels[i]) for i in range(len(meta_labels))}
+        b_centroid_map = spark.sparkContext.broadcast(centroid_map)
+        predictions_df = model.transform(df)
+        def get_meta_label(micro_cluster_id): return b_centroid_map.value.get(micro_cluster_id, -1)
+        udf_get_meta_label = spark.udf.register("get_meta_label", get_meta_label)
+        final_df = predictions_df.withColumn("cluster_label", udf_get_meta_label(predictions_df['prediction']))
 
         print("\n--- Saving final cluster assignments ---")
-        os.makedirs(CLUSTER_DATA_DIR, exist_ok=True)
-        assignments_df = pd.DataFrame({'point_id': final_point_ids, 'cluster_label': final_labels})
-        assignments_df.to_csv(CLUSTER_ASSIGNMENTS_PATH, index=False)
-        print(f"Final cluster assignments saved to {CLUSTER_ASSIGNMENTS_PATH}")
+        output_df = final_df.select("id", "cluster_label")
+        output_df.write.mode("overwrite").option("header", "true").csv(CLUSTER_ASSIGNMENTS_PATH + "_spark")
+        print(f"Final cluster assignments saved to {CLUSTER_ASSIGNMENTS_PATH}_spark")
 
     except Exception as e:
-        print(f"An error occurred during clustering: {e}")
+        print(f"An error occurred during Spark clustering: {e}")
     finally:
-        print("--- Clustering Phase Complete ---")
+        print("Stopping Spark session.")
+        spark.stop()
+        print(f"Cleaning up temporary directory: {TEMP_PARQUET_DIR}")
+        shutil.rmtree(TEMP_PARQUET_DIR)
+    print("--- Clustering Phase Complete ---")
+
 
 # --- Summarization Worker Functions (Phase 3) ---
+_summarization_pipeline = None
+_tokenizer = None
+
 def get_summarization_pipeline(gpu_id):
     global _summarization_pipeline, _tokenizer
     if _summarization_pipeline is None:
@@ -282,19 +256,15 @@ def summarization_worker(gpu_id: int, summary_queue: mp.Queue, result_queue: mp.
     print(f"[Summary-Worker-{gpu_id}] Starting.")
     summarizer, tokenizer = get_summarization_pipeline(gpu_id)
     qdrant_client = get_qdrant_client_worker()
-
     while True:
         item = summary_queue.get()
         if item is None: break
-
         cluster_id, point_ids = item
         records = qdrant_client.retrieve(collection_name=QDRANT_COLLECTION_NAME, ids=point_ids, with_payload=True)
         texts = [rec.payload['body'] for rec in records]
         sample_texts = texts[:5]
-        
         formatted_comments = '\n- '.join(sample_texts)
-        prompt = f"""<s>[INST] <<SYS>>\nYour task is to synthesize the provided Reddit comments into a concise 1-2 sentence summary of the core business opportunity or underlying problem.\n<</SYS>>\n\nComments:\n- {formatted_comments}\n\nConcise Summary: [/INST]"""
-
+        prompt = f"<s>[INST] <<SYS>>\nYour task is to synthesize the provided Reddit comments into a concise 1-2 sentence summary of the core business opportunity or underlying problem.\n<</SYS>>\n\nComments:\n- {formatted_comments}\n\nConcise Summary: [/INST]"
         try:
             sequences = summarizer(prompt, do_sample=True, top_k=10, num_return_sequences=1, eos_token_id=tokenizer.eos_token_id, max_length=200)
             summary = sequences[0]['generated_text'].split("[/INST]")[-1].strip()
@@ -302,21 +272,26 @@ def summarization_worker(gpu_id: int, summary_queue: mp.Queue, result_queue: mp.
         except Exception as e:
             print(f"[Summary-Worker-{gpu_id}] Error for cluster {cluster_id}: {e}")
             result_queue.put({"cluster_id": cluster_id, "summary": f"Error: {e}"})
-
     print(f"[Summary-Worker-{gpu_id}] Finished.")
 
 def run_phase_3_summarization():
     print("--- Starting Phase 3: Parallel Summarization ---")
-    
     if not os.path.exists(CLUSTER_ASSIGNMENTS_PATH):
-        print(f"Error: Cluster assignments file not found. Please run Phase 2 first.")
-        return
-        
+        if not os.path.exists(CLUSTER_ASSIGNMENTS_PATH + "_spark"):
+            print(f"Error: Cluster assignments file not found. Please run Phase 2 first.")
+            return
+        print("Found Spark output, converting to single CSV for summarization...")
+        spark = SparkSession.builder.appName("CsvConverter").master(SPARK_MASTER).getOrCreate()
+        spark_df = spark.read.csv(CLUSTER_ASSIGNMENTS_PATH + "_spark", header=True)
+        pandas_df = spark_df.toPandas()
+        pandas_df['point_id'] = pandas_df['id']
+        pandas_df[['point_id', 'cluster_label']].to_csv(CLUSTER_ASSIGNMENTS_PATH, index=False)
+        spark.stop()
+        print("Conversion complete.")
+
     assignments_df = pd.read_csv(CLUSTER_ASSIGNMENTS_PATH)
     clusters = assignments_df[assignments_df['cluster_label'] != -1].groupby('cluster_label')['point_id'].apply(list).to_dict()
-
     print(f"Found {len(clusters)} clusters to summarize.")
-
     summary_queue = mp.Queue(maxsize=SUMMARY_QUEUE_SIZE)
     result_queue = mp.Queue()
     summary_procs = []
@@ -324,19 +299,14 @@ def run_phase_3_summarization():
         p = mp.Process(target=summarization_worker, args=(i, summary_queue, result_queue))
         summary_procs.append(p)
         p.start()
-
     for cluster_id, point_ids in clusters.items():
         summary_queue.put((cluster_id, point_ids))
-
     print("Signaling end to summarization workers.")
     for _ in range(N_GPU_WORKERS):
         summary_queue.put(None)
-
     summaries = [result_queue.get() for _ in range(len(clusters))]
-
     for p in summary_procs:
         p.join()
-
     print(f"Saving {len(summaries)} summaries to {SUMMARIES_CSV_PATH}...")
     with open(SUMMARIES_CSV_PATH, 'w', newline='', encoding='utf-8') as csvfile:
         fieldnames = ['cluster_id', 'summary']
@@ -347,9 +317,10 @@ def run_phase_3_summarization():
 
 # --- Main Orchestrator ---
 def main():
-    parser = argparse.ArgumentParser(description="Run the embedding and clustering pipeline in phases.")
-    parser.add_argument('--skip-embedding', action='store_true', help="Skip Phase 1 (Embedding) and start from clustering.")
-    parser.add_argument('--skip-clustering', action='store_true', help="Skip Phase 2 (Clustering) and start from summarization.")
+    parser = argparse.ArgumentParser(description="Run the full pipeline.")
+    parser.add_argument('--skip-embedding', action='store_true', help="Skip Phase 1 (Embedding).")
+    parser.add_argument('--skip-clustering', action='store_true', help="Skip Phase 2 (Clustering).")
+    parser.add_argument('--skip-summarization', action='store_true', help="Skip Phase 3 (Summarization).")
     args = parser.parse_args()
 
     start_time = time.time()
@@ -364,7 +335,10 @@ def main():
     else:
         print("--- Skipping Phase 2: Clustering ---")
 
-    # run_phase_3_summarization()
+    if not args.skip_summarization:
+        run_phase_3_summarization()
+    else:
+        print("--- Skipping Phase 3: Summarization ---")
 
     end_time = time.time()
     print(f"Pipeline finished in {end_time - start_time:.2f} seconds.")
