@@ -213,3 +213,4 @@ processed_data
 **/node_modules
 
 crypto
+**/*.csv

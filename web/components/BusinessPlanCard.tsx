@@ -15,52 +15,114 @@ const formatTitle = (title: string) => {
 };
 
 const BusinessPlanCard: React.FC<Props> = ({ plan }) => {
-  const renderSection = (key: string, value: any) => {
-    if (key === 'title') {
-      return <Text key={key} style={styles.title}>{value}</Text>;
-    }
 
+  const renderValue = (value: any, level = 0): React.ReactNode => {
+    if (!value) {
+      return null;
+    }
     if (typeof value === 'string') {
+      return <Markdown style={{ body: styles.text }}>{value}</Markdown>;
+    }
+    if (Array.isArray(value)) {
       return (
-        <View key={key}>
-          <Text style={styles.h2}>{formatTitle(key)}</Text>
-          <Markdown style={{body: styles.text}}>{value}</Markdown>
+        <View>
+          {value.map((item, index) => {
+            if (typeof item === 'object' && item !== null) {
+              return (
+                <View key={index} style={styles.nestedObject}>
+                  {Object.entries(item).map(([k, v]) => (
+                    <View key={k}>
+                      <Text style={styles.h4}>{formatTitle(k)}</Text>
+                      {renderValue(v, level + 1)}
+                    </View>
+                  ))}
+                </View>
+              );
+            }
+            return <Markdown key={index} style={{ body: styles.listItem }}>{`- ${item}`}</Markdown>;
+          })}
         </View>
       );
-    } else if (Array.isArray(value)) {
+    }
+    if (typeof value === 'object') {
       return (
-        <View key={key}>
-          <Text style={styles.h2}>{formatTitle(key)}</Text>
-          {value.map((item, index) => (
-            <Markdown key={index} style={{body: styles.listItem}}> - {item}</Markdown>
-          ))}
-        </View>
-      );
-    } else if (typeof value === 'object' && value !== null) {
-      return (
-        <View key={key}>
-          <Text style={styles.h2}>{formatTitle(key)}</Text>
-          <Markdown style={{body: styles.text, code_block: styles.codeBlock}}>
-            {'```json\n' + JSON.stringify(value, null, 2) + '\n```'}
-          </Markdown>
+        <View style={{ marginLeft: level * 10 }}>
+          {Object.entries(value).map(([key, val]) => {
+            if (!val) return null;
+            return (
+              <View key={key}>
+                <Text style={styles.h3}>{formatTitle(key)}</Text>
+                {renderValue(val, level + 1)}
+              </View>
+            );
+          })}
         </View>
       );
     }
     return null;
   };
 
+  const renderSection = (key: string, value: any) => {
+    if (!value) {
+      return null;
+    }
+    if (key === 'title') {
+      return <Text key={key} style={styles.title}>{value}</Text>;
+    }
+    if (['subreddit', 'cluster_id', 'ids_in_cluster', 'texts', 'total_ups', 'total_downs', 'summary'].includes(key)) {
+      return null;
+    }
+
+    return (
+      <View key={key}>
+        <Text style={styles.h2}>{formatTitle(key)}</Text>
+        {renderValue(value)}
+      </View>
+    );
+  };
+
   if (!plan) {
     return null;
+  }
+
+  const orderedPlan = {
+    title: plan.title,
+    executive_summary: plan.executive_summary,
+    problem: plan.problem,
+    solution: plan.solution,
+    market_analysis: plan.market_analysis,
+    competition: plan.competition,
+    marketing_strategy: plan.marketing_strategy,
+    management_team: plan.management_team,
+    financial_projections: plan.financial_projections,
+    call_to_action: plan.call_to_action,
+    ...plan
   }
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.card}>
-        {Object.entries(plan).map(([key, value]) => {
-          if (key === 'index') return null; // Don't render the index
-          return renderSection(key, value);
-        })}
+        {Object.entries(orderedPlan).map(([key, value]) => renderSection(key, value))}
       </View>
+      {(plan.summary || (plan.texts && plan.texts.length > 0)) && (
+        <View style={styles.sourceCard}>
+            <Text style={styles.h2}>Source Data</Text>
+            {plan.summary && (
+                <View>
+                    <Text style={styles.h3}>Summary</Text>
+                    <Markdown style={{ body: styles.text }}>{plan.summary}</Markdown>
+                </View>
+            )}
+            {plan.texts && plan.texts.length > 0 && (
+                <View>
+                    <Text style={styles.h3}>Original Texts</Text>
+                    {plan.texts.map((text, index) => (
+                        <Markdown key={index} style={{ body: styles.sourceText }}>{text.replace(/\n\n---\n\n/g, '\n\n---\n\n')}</Markdown>
+                    ))}
+                </View>
+            )}
+        </View>
+      )}
     </ScrollView>
   );
 };
@@ -114,10 +176,35 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     color: '#D3D3D3',
   },
+  nestedObject: {
+    marginLeft: 10,
+    borderLeftWidth: 2,
+    borderLeftColor: '#445c75',
+    paddingLeft: 10,
+    marginTop: 5,
+    marginBottom: 5,
+  },
   codeBlock: {
     backgroundColor: '#000000',
     padding: 10,
     borderRadius: 4,
+  },
+  sourceCard: {
+    backgroundColor: '#2c3e50',
+    borderRadius: 8,
+    padding: 20,
+    margin: 20,
+    marginTop: 0,
+  },
+  sourceText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#B0C4DE',
+    fontStyle: 'italic',
+    borderLeftWidth: 2,
+    borderLeftColor: '#445c75',
+    paddingLeft: 10,
+    marginTop: 10,
   },
 });
 

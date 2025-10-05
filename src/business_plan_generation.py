@@ -1,14 +1,15 @@
 import asyncio
-import csv
 import os
 import json
-from typing import List, Dict, Any
-import re # Import regex
-import uuid # Import uuid
+from typing import Dict, Any
+import re
+import uuid
+import glob
+import pandas as pd
 
 import google.generativeai as genai
 from qdrant_client import QdrantClient, models
-from elasticsearch import AsyncElasticsearch # For asynchronous Elasticsearch operations
+from elasticsearch import AsyncElasticsearch
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 
@@ -18,8 +19,8 @@ load_dotenv()
 # Configure Gemini API
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-# Configuration constants
-SUMMARIES_CSV_PATH = "/home/coinsafe/business-finder/summaries.csv"
+# --- Configuration ---
+SUMMARIES_DIR = "/home/coinsafe/business-finder/data/summaries"
 ELASTICSEARCH_HOST = "localhost"
 ELASTICSEARCH_PORT = 9200
 ELASTICSEARCH_INDEX = "business_plans"
@@ -33,73 +34,59 @@ _embedding_model = None
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
-        _embedding_model = SentenceTransformer('all-MiniLM-L6-v2') # CPU-based for this part
+        _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
     return _embedding_model
 
-async def generate_business_plan(opportunity_summary: str) -> Dict[str, Any]:
+async def generate_business_plan(opportunity_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Generates a detailed business plan using Google's Gemini 1.5 Flash model.
+    Generates a detailed business plan using Google's Gemini 1.5 Flash model,
+    and merges it with the original opportunity data.
     """
     model = genai.GenerativeModel("models/gemini-2.5-flash-lite")
+    opportunity_summary = opportunity_data.get("summary", "")
 
     prompt = f"""
-    Generate a comprehensive business plan based on the following core business opportunity.
-    The plan must be structured as a JSON object with the exact structure specified below. Some fields are optional and can be omitted if not applicable, but the overall structure must be maintained.
+    Generate a comprehensive and realistic business plan based on the following core business opportunity.
+    The plan must be structured as a JSON object with the exact structure specified below.
+    For each field, provide a detailed and well-researched answer.
 
-    Here is a description of each field to guide you:
-    - `title`: A concise and compelling title for the business.
-    - `executive_summary`: A high-level overview of the entire business plan, including the problem, solution, and key business goals.
-    - `problem`: The specific pain point, need, or gap in the market that the business aims to solve.
-    - `solution`: A clear description of the product, service, or platform and how it addresses the identified problem.
-    - `market_analysis`:
-        - `target_market`: The specific demographic, psychographic, and behavioral characteristics of the ideal customer. Can be a string or a list of strings for multiple segments.
-        - `market_size`: An estimate of the total addressable market (TAM), serviceable available market (SAM), and serviceable obtainable market (SOM).
-        - `trends`: Key industry and consumer trends that could impact the business.
-    - `competition`:
-        - `competitors`: A list of known existing or potential competitors.
-        - `direct_competitors`: Competitors offering a very similar solution to the same target market.
-        - `indirect_competitors`: Competitors solving the same core problem but with a different solution.
-        - `competitive_advantages`: The unique features, technology, partnerships, or strategies that give the business an edge.
-    - `marketing_strategy`:
-        - `approach`: The overall philosophy or methodology for marketing (e.g., inbound, growth hacking, community-led).
-        - `channels`: The specific platforms and channels to be used (e.g., "Content Marketing", "SEO", "Twitter", "Reddit").
-        - `content_strategy`: The plan for creating and distributing valuable content to attract and engage the target audience.
-        - `community_building`: Strategies for fostering a community around the product or brand.
-        - `customer_acquisition`: Specific tactics for acquiring new customers.
-        - `digital_marketing`: Strategies for online marketing, including social media, email marketing, and PPC.
-        - `distribution_channels`: How the product or service will be delivered to customers.
-        - `influencer_marketing`: Plans for leveraging influencers to reach a wider audience.
-        - `messaging`: The core messages and brand voice to be used in all communications.
-        - `online_presence`: How the business will be represented online (e.g., website, social media profiles).
-        - `outreach`: Proactive methods for connecting with potential customers, partners, or media.
-        - `outreach_channels`: Specific channels for outreach (e.g., "Cold Email", "LinkedIn Messaging").
-        - `outreach_methods`: The techniques to be used for outreach.
-        - `partnerships`: Potential strategic partnerships to accelerate growth.
-        - `paid_advertising`: The strategy for using paid ad platforms (e.g., "Google Ads", "Facebook Ads").
-        - `pricing_strategy`: How the product or service will be priced.
-        - `public_relations`: Strategies for managing public perception and media relations.
-        - `reach_target_market`: How the marketing efforts will specifically connect with the defined target market.
-        - `retention`: Strategies for keeping customers engaged and loyal.
-        - `seo_optimization`: Plans for optimizing the website and content for search engines.
-        - `value_proposition`: A clear statement of the benefits the business delivers to its customers.
-    - `management_team`:
-        - `placeholder`: A placeholder string if the team is not yet defined (e.g., "Team to be assembled").
-        - `description`: A summary of the team's collective expertise and why they are suited to lead the business.
-        - `founder`, `developer`, `community_manager`: Placeholder roles with a brief bio describing the ideal candidate.
-        - `members`: A list of specific team members and their roles.
-        - `roles`: A list of key roles needed for the business and their responsibilities.
-    - `financial_projections`:
-        - `placeholder`: A placeholder string if detailed financials are not yet available (e.g., "Financial projections to be developed").
-        - `description`: A summary of the financial plan and key assumptions.
-        - `projections`: High-level financial forecasts (e.g., revenue, profit for the first 3-5 years).
-        - `notes`: Important assumptions or disclaimers about the financial projections.
-        - `revenue_streams`: The different ways the business will generate revenue.
-        - `revenue_sources`: Specific sources of income within each revenue stream.
-        - `cost_structure`: An overview of the major fixed and variable costs.
-        - `cost_drivers`: The key factors that influence the costs.
-    - `call_to_action`: The immediate next steps for the business (e.g., "Seeking $50,000 in seed funding", "Build and launch MVP in Q4").
+    **Detailed Instructions for each section:**
 
-    JSON Structure to be generated:
+    - **title**: A catchy and descriptive title for the business idea.
+    - **executive_summary**: A concise overview of the entire business plan (2-3 paragraphs). It should be compelling and capture the essence of the business, including the problem, solution, target market, and financial potential.
+    - **problem**: Clearly define the pain point or problem this business idea solves. Who is affected by it and why is it significant? Provide context and evidence.
+    - **solution**: Describe your product or service and how it solves the identified problem. What are the key features and what makes your solution unique and superior to existing alternatives?
+    - **market_analysis**:
+        - **target_market**: Describe the ideal customer profile. Be specific about demographics (age, location, income), psychographics (interests, values, lifestyle), and behaviors. Can be a string or a list of strings for multiple segments.
+        - **market_size**: Estimate the size of the target market (e.g., in number of potential customers or monetary value like TAM, SAM, SOM). Provide a brief justification for your estimate.
+        - **trends**: List key trends in the market that could positively or negatively impact the business (e.g., technological advancements, social shifts, regulatory changes).
+    - **competition**:
+        - **competitors**: A general overview of the competitive landscape.
+        - **direct_competitors**: List 2-3 companies that offer a very similar solution to the same target market.
+        - **indirect_competitors**: List 2-3 companies that solve the same core problem but with a different type of solution.
+        - **competitive_advantages**: What makes your business stronger than the competition? (e.g., proprietary technology, unique business model, key partnerships, lower cost, superior user experience).
+    - **marketing_strategy**: A comprehensive plan to reach, attract, and retain customers.
+        - **value_proposition**: A clear and compelling statement of the unique benefits you deliver to customers. Why should they choose you over anyone else?
+        - **pricing_strategy**: How will you price your product/service? (e.g., subscription tiers, one-time fee, freemium, usage-based). Justify the choice.
+        - **distribution_channels**: How will you deliver your product or service to your customers? (e.g., website, mobile app, physical stores, third-party marketplaces).
+        - **online_presence**: Plan for your website, blog, and key social media platforms (e.g., Twitter, LinkedIn, Instagram).
+        - **content_strategy**: What kind of content will you create to attract and engage your target audience? (e.g., blog posts, videos, tutorials, case studies).
+        - **seo_optimization**: High-level plan to improve search engine rankings for relevant keywords.
+        - **paid_advertising**: Strategy for using paid channels like Google Ads, social media ads, or sponsored content.
+        - **public_relations**: How will you manage your public image and get media coverage? (e.g., press releases, outreach to journalists).
+        - **partnerships**: Identify potential strategic partnerships to accelerate growth (e.g., with complementary businesses, influencers).
+        - **customer_acquisition**: Specific tactics and channels you will use to acquire your first 1000 customers.
+        - **retention**: Strategies to keep customers loyal, engaged, and reduce churn (e.g., email newsletters, community forums, loyalty programs).
+    - **management_team**:
+        - **description**: Describe the ideal founding team. What key skills, experience, and domain expertise are needed to make this business successful?
+        - **roles**: List key roles to be filled in the first 1-2 years (e.g., CEO, CTO, CMO) and the primary responsibilities for each role.
+    - **financial_projections**:
+        - **potential_monthly_revenue**: A realistic, data-driven estimate of the potential monthly revenue in USD for the first 12-24 months. Provide a range and justify the number with a brief explanation (e.g., based on market size, pricing, and a conservative customer acquisition rate).
+        - **revenue_streams**: How will the business make money? List all potential sources of income (e.g., subscription fees, advertising, data monetization).
+        - **cost_structure**: What are the major anticipated costs and expenses? (e.g., salaries, marketing spend, software/hosting, rent, legal fees).
+    - **call_to_action**: A compelling final statement that summarizes the opportunity and encourages action or investment.
+
+    **JSON Structure to be generated:**
     {{
       "title": "String",
       "executive_summary": "String",
@@ -117,49 +104,20 @@ async def generate_business_plan(opportunity_summary: str) -> Dict[str, Any]:
         "competitive_advantages": ["String"]
       }},
       "marketing_strategy": {{
-        "approach": "String",
-        "channels": ["String"],
-        "content_strategy": "String",
-        "community_building": ["String"],
-        "customer_acquisition": ["String"],
-        "digital_marketing": ["String"],
-        "distribution_channels": "String",
-        "influencer_marketing": ["String"],
-        "messaging": "String",
-        "online_presence": "String",
-        "outreach": ["String"],
-        "outreach_channels": ["String"],
-        "outreach_methods": ["String"],
-        "partnerships": ["String"],
-        "paid_advertising": ["String"],
+        "value_proposition": "String",
         "pricing_strategy": "String",
-        "public_relations": ["String"],
-        "reach_target_market": ["String"],
-        "retention": ["String"],
-        "seo_optimization": ["String"],
-        "value_proposition": "String"
+        "distribution_channels": "String",
+        "online_presence": "String",
+        "content_strategy": "String",
+        "seo_optimization": "String",
+        "paid_advertising": "String",
+        "public_relations": "String",
+        "partnerships": ["String"],
+        "customer_acquisition": ["String"],
+        "retention": ["String"]
       }},
       "management_team": {{
-        "placeholder": "String",
         "description": "String",
-        "founder": {{
-          "role": "String",
-          "bio": "String"
-        }},
-        "developer": {{
-          "role": "String",
-          "bio": "String"
-        }},
-        "community_manager": {{
-          "role": "String",
-          "bio": "String"
-        }},
-        "members": [
-          {{
-            "name": "String",
-            "role": "String"
-          }}
-        ],
         "roles": [
           {{
             "role": "String",
@@ -168,14 +126,9 @@ async def generate_business_plan(opportunity_summary: str) -> Dict[str, Any]:
         ]
       }},
       "financial_projections": {{
-        "placeholder": "String",
-        "description": "String",
-        "projections": "String",
-        "notes": "String",
+        "potential_monthly_revenue": "String (e.g., '$10,000 - $25,000 USD. Justification: ...')",
         "revenue_streams": ["String"],
-        "revenue_sources": ["String"],
-        "cost_structure": ["String"],
-        "cost_drivers": ["String"]
+        "cost_structure": ["String"]
       }},
       "call_to_action": "String"
     }}
@@ -190,85 +143,86 @@ async def generate_business_plan(opportunity_summary: str) -> Dict[str, Any]:
         if response.prompt_feedback and response.prompt_feedback.block_reason:
             block_reason = response.prompt_feedback.block_reason.name
             print(f"Business plan generation blocked for summary: {opportunity_summary[:50]}... due to: {block_reason}")
-            return {"error": f"Blocked: {block_reason}", "summary": opportunity_summary}
-        
-        raw_response_text = response.text.strip()
-        
-        # Try to extract JSON block using regex
-        json_match = re.search(r"```json\n(.*)\n```", raw_response_text, re.DOTALL)
-        if json_match:
-            json_string = json_match.group(1)
-        else:
-            json_string = raw_response_text # Assume the whole response is JSON if no ```json block
+            return {**opportunity_data, "error": f"Blocked: {block_reason}"}
 
-        # Attempt to parse the response as JSON
+        raw_response_text = response.text.strip()
+        json_match = re.search(r"```json\n(.*)\n```", raw_response_text, re.DOTALL)
+        json_string = json_match.group(1) if json_match else raw_response_text
+
         try:
             business_plan = json.loads(json_string)
-            business_plan["summary_text"] = opportunity_summary # Add original summary for reference
-            return business_plan
+            # Merge original data with the new plan
+            return {**opportunity_data, **business_plan}
         except json.JSONDecodeError:
-            print(f"Failed to parse JSON for summary: {opportunity_summary[:50]}...\nRaw response: {raw_response_text}")
-            return {"error": "JSON parsing failed", "raw_response": raw_response_text, "summary": opportunity_summary}
+            print(f"Failed to parse JSON for summary: {opportunity_summary[:50]}...")
+            return {**opportunity_data, "error": "JSON parsing failed", "raw_response": raw_response_text}
 
     except Exception as e:
         print(f"Error generating business plan for summary: {opportunity_summary[:50]}... Error: {e}")
-        return {"error": f"Generation failed: {e}", "summary": opportunity_summary}
+        return {**opportunity_data, "error": f"Generation failed: {e}"}
 
 async def main_business_plan_generation():
     print("Starting Phase 4: Massively Parallel Business Plan Generation & Hybrid Storage...")
 
-    # Read opportunity summaries from CSV
-    opportunity_summaries = []
-    if not os.path.exists(SUMMARIES_CSV_PATH):
-        print(f"Error: Summaries CSV not found at {SUMMARIES_CSV_PATH}. Please run Phase 3 first.")
+    # Read opportunity summaries from all parquet files in the directory
+    parquet_files = glob.glob(os.path.join(SUMMARIES_DIR, "*_clusters.parquet"))
+    if not parquet_files:
+        print(f"Error: No summary parquet files found in {SUMMARIES_DIR}. Please run Phase 3 first.")
         return
 
-    with open(SUMMARIES_CSV_PATH, 'r', newline='', encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            opportunity_summaries.append(row['summary'])
-    print(f"Loaded {len(opportunity_summaries)} opportunity summaries from CSV.")
+    df = pd.concat([pd.read_parquet(f) for f in parquet_files], ignore_index=True)
+    opportunities = df.to_dict('records')
+    print(f"Loaded {len(opportunities)} opportunity summaries from {len(parquet_files)} files.")
+
+    # Move processed files to a 'computed' subdirectory to prevent re-ingestion
+    computed_dir = os.path.join(SUMMARIES_DIR, "computed")
+    os.makedirs(computed_dir, exist_ok=True)
+    print(f"Moving {len(parquet_files)} processed file(s) to '{computed_dir}'...")
+    for file_path in parquet_files:
+        try:
+            file_name = os.path.basename(file_path)
+            destination_path = os.path.join(computed_dir, file_name)
+            os.rename(file_path, destination_path)
+        except OSError as e:
+            print(f"Error moving file {file_path}: {e}")
 
     # Create tasks for parallel business plan generation
-    print("Generating business plans using Gemini 1.5 Flash (asynchronously)...")
-    generation_tasks = [generate_business_plan(summary) for summary in opportunity_summaries]
+    print(f"Generating {len(opportunities)} business plans using Gemini (asynchronously)...")
+    generation_tasks = [generate_business_plan(opp) for opp in opportunities]
     business_plans = await asyncio.gather(*generation_tasks)
     print("Finished generating business plans.")
 
-    # Initialize Elasticsearch client
+    # Initialize clients
     es_client = AsyncElasticsearch(f"http://{ELASTICSEARCH_HOST}:{ELASTICSEARCH_PORT}")
-    
-    # Check Elasticsearch connection
+    qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+    # Setup Elasticsearch and Qdrant
     try:
         await es_client.info()
         print("Connected to Elasticsearch.")
     except Exception as e:
-        print(f"Error connecting to Elasticsearch: {e}. Please ensure Elasticsearch is running.")
+        print(f"Error connecting to Elasticsearch: {e}. Please ensure it is running.")
         return
 
-    # Initialize Qdrant client
-    qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-
-    # Create Qdrant collection for business plan embeddings
     embedding_model = get_embedding_model()
     vector_size = embedding_model.get_sentence_embedding_dimension()
-    print(f"Creating Qdrant collection '{QDRANT_BUSINESS_PLANS_COLLECTION}' with vector size {vector_size}...")
+    print(f"Recreating Qdrant collection '{QDRANT_BUSINESS_PLANS_COLLECTION}' with vector size {vector_size}...")
     qdrant_client.recreate_collection(
         collection_name=QDRANT_BUSINESS_PLANS_COLLECTION,
         vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
     )
-    print("Qdrant business plans collection created/recreated.")
+    print("Qdrant collection created/recreated.")
 
     # Store business plans in Elasticsearch and Qdrant
     print("Storing business plans in Elasticsearch and Qdrant...")
     es_bulk_actions = []
     qdrant_points = []
-    for i, plan in enumerate(business_plans):
+    for plan in business_plans:
         if "error" in plan:
-            print(f"Skipping blocked/failed plan for summary: {plan['summary'][:50]}...") # Corrected f-string
+            print(f"Skipping blocked/failed plan for summary: {plan.get('summary', 'N/A')[:50]}...")
             continue
 
-        # Store in Elasticsearch
+        # The 'plan' dictionary now contains the full merged data
         es_bulk_actions.append({"index": {"_index": ELASTICSEARCH_INDEX, "_id": str(uuid.uuid4())}})
         es_bulk_actions.append(plan)
 
@@ -277,32 +231,36 @@ async def main_business_plan_generation():
         if executive_summary:
             embedding = embedding_model.encode(executive_summary).tolist()
             qdrant_points.append(models.PointStruct(
-                id=str(uuid.uuid4().hex), # Unique ID for Qdrant point
+                id=str(uuid.uuid4().hex),
                 vector=embedding,
                 payload={
                     "title": plan.get("title"),
                     "executive_summary": executive_summary,
-                    "original_summary": plan.get("summary_text")
+                    "original_summary": plan.get("summary"),
+                    "subreddit": plan.get("subreddit"),
+                    "cluster_id": int(plan.get("cluster_id", -1))
                 }
             ))
 
-        # Bulk insert into Elasticsearch and Qdrant periodically
-        if len(es_bulk_actions) >= 500: # Batch size for Elasticsearch (note: this is 250 actual documents)
+        # Bulk insert periodically
+        if len(es_bulk_actions) >= 500:
             await es_client.bulk(operations=es_bulk_actions)
             es_bulk_actions = []
-        
-        if len(qdrant_points) >= 100: # Batch size for Qdrant
+        if len(qdrant_points) >= 100:
             qdrant_client.upsert(collection_name=QDRANT_BUSINESS_PLANS_COLLECTION, points=qdrant_points)
             qdrant_points = []
 
     # Insert any remaining items
-    if es_bulk_actions:
-        await es_client.bulk(operations=es_bulk_actions)
-    if qdrant_points:
-        qdrant_client.upsert(collection_name=QDRANT_BUSINESS_PLANS_COLLECTION, points=qdrant_points)
+    if es_bulk_actions: await es_client.bulk(operations=es_bulk_actions)
+    if qdrant_points: qdrant_client.upsert(collection_name=QDRANT_BUSINESS_PLANS_COLLECTION, points=qdrant_points)
 
     print("Finished storing business plans.")
-    print("Phase 4: Massively Parallel Business Plan Generation & Hybrid Storage complete.")
+
+    # Close client connections
+    await es_client.close()
+    qdrant_client.close()
+
+    print("Phase 4 complete.")
 
 if __name__ == "__main__":
     asyncio.run(main_business_plan_generation())

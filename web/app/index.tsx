@@ -39,8 +39,8 @@ const FeedScreen = () => {
         style={styles.gradient}
       />
       <View style={styles.topBar}>
-        <TouchableOpacity style={styles.topBarButton} onPress={loadRandomPlan}>
-          <Text style={styles.topBarButtonText}>Next</Text>
+        <TouchableOpacity style={styles.nextButton} onPress={loadRandomPlan}>
+          <Text style={styles.nextButtonText}>Next Idea</Text>
         </TouchableOpacity>
       </View>
       {loading && (
@@ -76,15 +76,20 @@ const styles = StyleSheet.create({
   },
   topBar: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     padding: 10,
+    alignItems: 'center',
   },
-  topBarButton: {
-    padding: 10,
+  nextButton: {
+    backgroundColor: '#58a6ff',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
   },
-  topBarButtonText: {
+  nextButtonText: {
     color: '#ffffff',
     fontSize: 16,
+    fontWeight: 'bold',
   },
   centeredContainer: {
     flex: 1,

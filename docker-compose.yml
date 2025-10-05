@@ -1,47 +1,15 @@
 version: '3.8'
 services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - ./data/qdrant_data:/qdrant/data
-    restart: unless-stopped
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-    container_name: elasticsearch
+  postgres:
+    image: postgres:15-alpine
+    restart: always
     environment:
-      - xpack.security.enabled=false
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - ./data/es_data:/usr/share/elasticsearch/data
+      - POSTGRES_USER=reddit_user
+      - POSTGRES_PASSWORD=reddit_password
+      - POSTGRES_DB=reddit_threads
     ports:
-      - "9200:9200"
-      - "9300:9300"
-    restart: unless-stopped
-  dozzle:
-      image: amir20/dozzle:latest
-      ports:
-        - target: 8080
-          published: 8888
-          protocol: tcp
-          mode: host
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
-      environment:
-      # Uncomment to enable container actions (stop, start, restart). See https://dozzle.dev/guide/actions
-      - DOZZLE_ENABLE_ACTIONS=true
-      #
-      # Uncomment to allow access to container shells. See https://dozzle.dev/guide/shell
-      - DOZZLE_ENABLE_SHELL=true
-      #
-      # Uncomment to enable authentication. See https://dozzle.dev/guide/authentication
-      # - DOZZLE_AUTH_PROVIDER=simple
+      - '5432:5432'
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+volumes:
+  postgres-data:
