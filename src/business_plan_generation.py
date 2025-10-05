@@ -39,7 +39,7 @@ def get_embedding_model():
 
 async def generate_business_plan(opportunity_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Generates a detailed business plan using Google's Gemini 1.5 Flash model,
+    Generates a detailed business plan using Google's Gemini 2.5 Flash model,
     and merges it with the original opportunity data.
     """
     model = genai.GenerativeModel("models/gemini-2.5-flash-lite")

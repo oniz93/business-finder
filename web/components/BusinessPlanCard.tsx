@@ -104,9 +104,15 @@ const BusinessPlanCard: React.FC<Props> = ({ plan }) => {
       <View style={styles.card}>
         {Object.entries(orderedPlan).map(([key, value]) => renderSection(key, value))}
       </View>
-      {(plan.summary || (plan.texts && plan.texts.length > 0)) && (
+      {(plan.subreddit || plan.summary || (plan.texts && plan.texts.length > 0)) && (
         <View style={styles.sourceCard}>
             <Text style={styles.h2}>Source Data</Text>
+            {plan.subreddit && (
+                <View>
+                    <Text style={styles.h3}>Subreddit</Text>
+                    <Text style={styles.text}>{plan.subreddit}</Text>
+                </View>
+            )}
             {plan.summary && (
                 <View>
                     <Text style={styles.h3}>Summary</Text>

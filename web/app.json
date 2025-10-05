@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "GitFinder BETA",
-    "slug": "git-finder",
+    "name": "BusinessFinder BETA",
+    "slug": "business-finder",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -26,7 +26,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "EXPO_PUBLIC_API_URL": "https://api.gitfinder.dev"
+      "EXPO_PUBLIC_API_URL": "https://api.businessfinder.dev"
     }
   }
 }
