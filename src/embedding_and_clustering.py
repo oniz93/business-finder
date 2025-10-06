@@ -32,6 +32,15 @@ from sentence_transformers import SentenceTransformer
 # For clustering on GPU
 import cuml
 
+SERIOUS_BUSINESS_SUBREDDITS = {
+    'r/startups', 'r/entrepreneur', 'r/SaaS', 
+    'r/smallbusiness', 'r/Entrepreneur_Ideas'
+}
+
+COMPLAINT_SUBREDDITS = {
+    'r/mildlyinfuriating', 'r/rant', 'r/AmItheAsshole'
+}
+
 # For summarization with Gemini
 import google.generativeai as genai
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -102,6 +111,36 @@ async def summarize_cluster_texts(cluster_id, texts, model, log_queue):
         log_queue.put(f"[Summarizer] Error generating summary for cluster {cluster_id}: {e}")
         return None
 
+def filter_clusters_by_quality(clustered_df):
+    """Only keep clusters that show business potential"""
+    
+    quality_metrics = []
+    for cluster_id in clustered_df['cluster'].unique():
+        cluster_texts = clustered_df[clustered_df['cluster'] == cluster_id]['full_thread_body']
+        
+        # Calculate aggregate metrics
+        avg_length = cluster_texts.str.len().mean()
+        has_numbers = cluster_texts.str.contains(r'\d+').sum() / len(cluster_texts)
+        has_action_words = cluster_texts.str.contains(
+            r'(build|create|develop|solve|implement|design)', 
+            case=False
+        ).sum() / len(cluster_texts)
+        
+        # Scoring
+        quality = 0
+        if avg_length > 200: quality += 2
+        if has_numbers > 0.3: quality += 2  # Data-driven discussion
+        if has_action_words > 0.4: quality += 3  # Action-oriented
+        
+        quality_metrics.append({
+            'cluster_id': cluster_id,
+            'quality_score': quality
+        })
+    
+    # Only keep clusters scoring 5+
+    good_clusters = [m['cluster_id'] for m in quality_metrics if m['quality_score'] >= 5]
+    return clustered_df[clustered_df['cluster'].isin(good_clusters)]
+
 async def cluster_and_summarize_chunk_async(args):
     subreddits_chunk, gpu_id, log_queue = args
     try:
@@ -112,6 +151,11 @@ async def cluster_and_summarize_chunk_async(args):
         model = genai.GenerativeModel(SUMMARIZATION_MODEL_NAME)
 
         for subreddit_name in subreddits_chunk:
+            # Cross-reference with business subreddits (Idea #4)
+            if f"r/{subreddit_name}" in COMPLAINT_SUBREDDITS:
+                log_queue.put(f"[GPU-{gpu_id}] Skipping complaint subreddit: {subreddit_name}")
+                continue
+
             embedding_path = os.path.join(EMBEDDINGS_DIR, subreddit_name, "embeddings.npy")
             data_path = os.path.join(EMBEDDINGS_DIR, subreddit_name, "data.parquet")
 
@@ -132,6 +176,13 @@ async def cluster_and_summarize_chunk_async(args):
             clustered_df = df[df['cluster'] != -1]
 
             if clustered_df.empty:
+                continue
+
+            # Filter clusters by quality before summarization (Idea #6)
+            clustered_df = filter_clusters_by_quality(clustered_df)
+
+            if clustered_df.empty:
+                log_queue.put(f"[GPU-{gpu_id}] No high-quality clusters found for {subreddit_name}.")
                 continue
 
             tasks = []

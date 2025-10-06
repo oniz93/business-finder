@@ -6,6 +6,9 @@ import re
 import uuid
 import glob
 import pandas as pd
+import time
+import argparse
+import numpy as np
 
 import google.generativeai as genai
 from qdrant_client import QdrantClient, models
@@ -28,6 +31,12 @@ QDRANT_HOST = "localhost"
 QDRANT_PORT = 6333
 QDRANT_BUSINESS_PLANS_COLLECTION = "business_plans_embeddings"
 
+MODEL_RPMS = {
+    "models/gemini-2.5-flash": 950,
+    "models/gemini-2.5-pro": 135,
+    "models/gemini-2.5-flash-lite": 3950,
+}
+
 # Global variable for embedding model (initialized once)
 _embedding_model = None
 
@@ -37,12 +46,41 @@ def get_embedding_model():
         _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
     return _embedding_model
 
-async def generate_business_plan(opportunity_data: Dict[str, Any]) -> Dict[str, Any]:
+
+def convert_ndarrays_to_lists(obj):
+    if isinstance(obj, dict):
+        return {k: convert_ndarrays_to_lists(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_ndarrays_to_lists(elem) for elem in obj]
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
+
+async def run_gemini_tasks_in_chunks(tasks, model_name: str):
+    """Runs a list of asyncio tasks in chunks with rate limiting."""
+    rpm = MODEL_RPMS.get(model_name, 150)  # Default to a safe RPM
+    chunk_size = rpm  # Process up to a minute's worth of requests in each chunk
+    results = []
+    for i in range(0, len(tasks), chunk_size):
+        chunk = tasks[i:i+chunk_size]
+        start_time = time.time()
+        print(f"Processing chunk {i//chunk_size + 1}/{(len(tasks) + chunk_size - 1)//chunk_size} with {len(chunk)} tasks...")
+        results.extend(await asyncio.gather(*chunk))
+        end_time = time.time()
+        elapsed = end_time - start_time
+        
+        if elapsed < 120 and i + chunk_size < len(tasks):
+            sleep_time = 120 - elapsed
+            print(f"Rate limit: sleeping for {sleep_time:.2f} seconds.")
+            await asyncio.sleep(sleep_time)
+    return results
+
+async def generate_business_plan(opportunity_data: Dict[str, Any], model) -> Dict[str, Any]:
     """
     Generates a detailed business plan using Google's Gemini 2.5 Flash model,
     and merges it with the original opportunity data.
     """
-    model = genai.GenerativeModel("models/gemini-2.5-flash-lite")
     opportunity_summary = opportunity_data.get("summary", "")
 
     prompt = f"""
@@ -161,36 +199,166 @@ async def generate_business_plan(opportunity_data: Dict[str, Any]) -> Dict[str, 
         print(f"Error generating business plan for summary: {opportunity_summary[:50]}... Error: {e}")
         return {**opportunity_data, "error": f"Generation failed: {e}"}
 
-async def main_business_plan_generation():
+async def score_business_viability(summary: str, model) -> Dict[str, Any]:
+    """Scores a business opportunity summary using a Gemini prompt."""
+    prompt = f"""
+    Evaluate if this is a REAL business opportunity (score 0-10):
+    - Is there a clear, solvable problem? (not just venting)
+    - Would people actually pay money for a solution?
+    - Is it actionable (not "someone should invent teleportation")?
+    - Does a viable market likely exist?
+
+    Text: {summary}
+
+    Return ONLY a JSON: {{"score": X, "reasoning": "brief explanation"}}
+    """
+    try:
+        response = await model.generate_content_async(prompt)
+        # Extract JSON from the response, handling potential markdown code blocks
+        raw_response_text = response.text.strip()
+        json_match = re.search(r"```json\n(.*)\n```", raw_response_text, re.DOTALL)
+        json_string = json_match.group(1) if json_match else raw_response_text
+        
+        result = json.loads(json_string)
+        return result
+    except Exception as e:
+        print(f"Error during scoring for summary: {summary[:50]}... Error: {e}")
+        return {"score": 0, "reasoning": f"Scoring failed: {e}"}
+
+async def validate_business_viability(summary: str, model) -> bool:
+    """Quick validation before expensive business plan generation"""
+    
+    prompt = f"""
+    Is this a REALISTIC business opportunity or just wishful thinking/complaining?
+    
+    RED FLAGS (answer NO if present):
+    - Requires breakthrough technology that doesn't exist
+    - "Someone should just..." without feasible path
+    - Solves a problem that doesn't actually bother people enough to pay
+    - Requires government/major corporations to change fundamentally
+    
+    GREEN FLAGS (answer YES if present):
+    - Clear customer pain point with willingness to pay
+    - Feasible with current technology
+    - Similar businesses exist (proves market)
+    - Actionable by small team
+    
+    Summary: {summary}
+    
+    Answer ONLY: YES or NO
+    """
+    
+    try:
+        response = await model.generate_content_async(prompt)
+        return "YES" in response.text.upper()
+    except Exception as e:
+        print(f"Error during viability validation for summary: {summary[:50]}... Error: {e}")
+        return False
+
+async def main_business_plan_generation(start_from: str = None):
     print("Starting Phase 4: Massively Parallel Business Plan Generation & Hybrid Storage...")
 
-    # Read opportunity summaries from all parquet files in the directory
-    parquet_files = glob.glob(os.path.join(SUMMARIES_DIR, "*_clusters.parquet"))
-    if not parquet_files:
-        print(f"Error: No summary parquet files found in {SUMMARIES_DIR}. Please run Phase 3 first.")
+    opportunities = []
+    scored_opportunities = []
+    viable_opportunities = []
+    business_plans = []
+
+    # --- Stage 1: Load initial data or from checkpoint ---
+    if start_from is None:
+        print("Starting from the beginning...")
+        parquet_files = glob.glob(os.path.join(SUMMARIES_DIR, "*_clusters.parquet"))
+        if not parquet_files:
+            print(f"Error: No summary parquet files found in {SUMMARIES_DIR}. Please run Phase 3 first.")
+            return
+        df = pd.concat([pd.read_parquet(f) for f in parquet_files], ignore_index=True)
+        opportunities = df.to_dict('records')
+        print(f"Loaded {len(opportunities)} opportunity summaries from {len(parquet_files)} files.")
+    else:
+        print(f"Attempting to start from checkpoint: {start_from}")
+
+    # --- Stage 2: Scoring ---
+    if start_from is None:
+        print(f"Scoring {len(opportunities)} opportunities...")
+        scoring_model_name = "models/gemini-1.5-flash-latest"
+        scoring_model = genai.GenerativeModel(scoring_model_name)
+        scoring_tasks = [score_business_viability(opp['summary'], scoring_model) for opp in opportunities]
+        scoring_results = await run_gemini_tasks_in_chunks(scoring_tasks, scoring_model_name)
+
+        for opp, result in zip(opportunities, scoring_results):
+            if result.get('score', 0) >= 7:
+                opp['viability_score'] = result['score']
+                opp['viability_reasoning'] = result.get('reasoning', '')
+                scored_opportunities.append(opp)
+        print(f"Scoring complete. Found {len(scored_opportunities)} opportunities with a score >= 7.")
+        if scored_opportunities:
+            pd.DataFrame(scored_opportunities).to_parquet(os.path.join(SUMMARIES_DIR, "01_scored_opportunities.parquet"))
+            print(f"Saved {len(scored_opportunities)} scored opportunities to checkpoint file.")
+    elif start_from in ["01_scored_opportunities.parquet", "02_validated_opportunities.parquet", "03_generated_business_plans.parquet"]:
+        print("Skipping scoring step.")
+        scored_opportunities_df = pd.read_parquet(os.path.join(SUMMARIES_DIR, "01_scored_opportunities.parquet"))
+        scored_opportunities = scored_opportunities_df.to_dict('records')
+
+    # --- Stage 3: Validation ---
+    if start_from is None or start_from == "01_scored_opportunities.parquet":
+        print(f"Validating {len(scored_opportunities)} scored opportunities...")
+        validation_model_name = "models/gemini-1.5-flash-latest"
+        validation_model = genai.GenerativeModel(validation_model_name)
+        validation_tasks = [validate_business_viability(opp['summary'], validation_model) for opp in scored_opportunities]
+        validation_results = await run_gemini_tasks_in_chunks(validation_tasks, validation_model_name)
+        
+        viable_opportunities = [opp for opp, is_viable in zip(scored_opportunities, validation_results) if is_viable]
+        print(f"Validation complete. Found {len(viable_opportunities)} viable opportunities.")
+        if viable_opportunities:
+            pd.DataFrame(viable_opportunities).to_parquet(os.path.join(SUMMARIES_DIR, "02_validated_opportunities.parquet"))
+            print(f"Saved {len(viable_opportunities)} validated opportunities to checkpoint file.")
+    elif start_from in ["02_validated_opportunities.parquet", "03_generated_business_plans.parquet"]:
+        print("Skipping validation step.")
+        viable_opportunities_df = pd.read_parquet(os.path.join(SUMMARIES_DIR, "02_validated_opportunities.parquet"))
+        viable_opportunities = viable_opportunities_df.to_dict('records')
+
+    # --- Stage 4: Business Plan Generation ---
+    if start_from in [None, "01_scored_opportunities.parquet", "02_validated_opportunities.parquet"]:
+        if not viable_opportunities:
+            print("No viable opportunities to generate business plans for. Exiting.")
+            return
+        print(f"Generating {len(viable_opportunities)} business plans using Gemini (asynchronously)...")
+        generation_model_name = "models/gemini-2.5-flash-lite"
+        generation_model = genai.GenerativeModel(generation_model_name)
+        generation_tasks = [generate_business_plan(opp, generation_model) for opp in viable_opportunities]
+    business_plans = await run_gemini_tasks_in_chunks(generation_tasks, generation_model_name)
+    print("Finished generating business plans.")
+
+    # Convert any numpy arrays to lists before saving
+    business_plans = [convert_ndarrays_to_lists(plan) for plan in business_plans]
+
+    # --- Checkpoint 3: Generated Business Plans ---
+    if business_plans:
+        # Fix for pyarrow error: convert complex columns to JSON strings
+        df_to_save = pd.DataFrame(business_plans)
+        for col in ['market_analysis', 'competition', 'marketing_strategy', 'management_team', 'financial_projections']:
+            if col in df_to_save.columns:
+                df_to_save[col] = df_to_save[col].apply(json.dumps)
+        df_to_save.to_parquet(os.path.join(SUMMARIES_DIR, "03_generated_business_plans.parquet"))
+        print(f"Saved {len(business_plans)} generated business plans to checkpoint file.")
+    elif start_from == "03_generated_business_plans.parquet":
+        print("Skipping business plan generation step.")
+        business_plans_df = pd.read_parquet(os.path.join(SUMMARIES_DIR, "03_generated_business_plans.parquet"))
+        business_plans = business_plans_df.to_dict('records')
+
+    # --- Stage 5: Backup and Storage ---
+    if not business_plans:
+        print("No business plans to process for backup and storage. Exiting.")
         return
 
-    df = pd.concat([pd.read_parquet(f) for f in parquet_files], ignore_index=True)
-    opportunities = df.to_dict('records')
-    print(f"Loaded {len(opportunities)} opportunity summaries from {len(parquet_files)} files.")
-
-    # Move processed files to a 'computed' subdirectory to prevent re-ingestion
-    computed_dir = os.path.join(SUMMARIES_DIR, "computed")
-    os.makedirs(computed_dir, exist_ok=True)
-    print(f"Moving {len(parquet_files)} processed file(s) to '{computed_dir}'...")
-    for file_path in parquet_files:
-        try:
-            file_name = os.path.basename(file_path)
-            destination_path = os.path.join(computed_dir, file_name)
-            os.rename(file_path, destination_path)
-        except OSError as e:
-            print(f"Error moving file {file_path}: {e}")
-
-    # Create tasks for parallel business plan generation
-    print(f"Generating {len(opportunities)} business plans using Gemini (asynchronously)...")
-    generation_tasks = [generate_business_plan(opp) for opp in opportunities]
-    business_plans = await asyncio.gather(*generation_tasks)
-    print("Finished generating business plans.")
+    backup_file_path = os.path.join(SUMMARIES_DIR, "business_plans_backup.ndjson")
+    print(f"Creating a backup of generated plans at: {backup_file_path}")
+    with open(backup_file_path, "w") as f:
+        count = 0
+        for plan in business_plans:
+            if "error" not in plan:
+                f.write(json.dumps(plan) + "\n")
+                count += 1
+    print(f"Successfully backed up {count} business plans.")
 
     # Initialize clients
     es_client = AsyncElasticsearch(f"http://{ELASTICSEARCH_HOST}:{ELASTICSEARCH_PORT}")
@@ -222,11 +390,9 @@ async def main_business_plan_generation():
             print(f"Skipping blocked/failed plan for summary: {plan.get('summary', 'N/A')[:50]}...")
             continue
 
-        # The 'plan' dictionary now contains the full merged data
         es_bulk_actions.append({"index": {"_index": ELASTICSEARCH_INDEX, "_id": str(uuid.uuid4())}})
         es_bulk_actions.append(plan)
 
-        # Generate embedding for executive summary and store in Qdrant
         executive_summary = plan.get("executive_summary", "")
         if executive_summary:
             embedding = embedding_model.encode(executive_summary).tolist()
@@ -242,7 +408,6 @@ async def main_business_plan_generation():
                 }
             ))
 
-        # Bulk insert periodically
         if len(es_bulk_actions) >= 500:
             await es_client.bulk(operations=es_bulk_actions)
             es_bulk_actions = []
@@ -250,17 +415,19 @@ async def main_business_plan_generation():
             qdrant_client.upsert(collection_name=QDRANT_BUSINESS_PLANS_COLLECTION, points=qdrant_points)
             qdrant_points = []
 
-    # Insert any remaining items
     if es_bulk_actions: await es_client.bulk(operations=es_bulk_actions)
     if qdrant_points: qdrant_client.upsert(collection_name=QDRANT_BUSINESS_PLANS_COLLECTION, points=qdrant_points)
 
     print("Finished storing business plans.")
 
-    # Close client connections
     await es_client.close()
     qdrant_client.close()
 
     print("Phase 4 complete.")
 
 if __name__ == "__main__":
-    asyncio.run(main_business_plan_generation())
+    parser = argparse.ArgumentParser(description="Generate business plans from Reddit summaries.")
+    parser.add_argument("--start-from", type=str, choices=["01_scored_opportunities.parquet", "02_validated_opportunities.parquet", "03_generated_business_plans.parquet"], help="Start the process from a specific checkpoint file.")
+    args = parser.parse_args()
+
+    asyncio.run(main_business_plan_generation(start_from=args.start_from))

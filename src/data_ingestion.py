@@ -13,6 +13,7 @@ from fileStreams import getFileJsonStream
 from transformers import pipeline
 import multiprocessing as mp
 import torch
+import re
 
 # --- Configuration ---
 # Multiprocessing
@@ -34,21 +35,46 @@ DB_PASS = "reddit_password"
 
 # File Paths & Logging
 LOG_INTERVAL = 50000
-files_to_process = [
-    {
-        "path": "/home/coinsafe/business-finder/reddit-dumps/dump2/reddit/submissions/RS_2025-07.zst",
-        "type": "submission"
-    },
-    {
-        "path": "/home/coinsafe/business-finder/reddit-dumps/reddit/comments/RC_2025-07.zst",
-        "type": "comment"
-    }
-]
+
+def get_files_to_process(base_dir, year="2025", excluded_month="07"):
+    """
+    Dynamically finds reddit data files for a given year, excluding a specific month.
+    """
+    all_files = []
+    
+    # Submissions
+    submission_pattern = os.path.join(base_dir, "submissions", f"RS_{year}-*.zst")
+    for f in glob.glob(submission_pattern):
+        if f"_{year}-{excluded_month}" not in os.path.basename(f):
+            all_files.append({"path": f, "type": "submission"})
+            
+    # Comments
+    comment_pattern = os.path.join(base_dir, "comments", f"RC_{year}-*.zst")
+    for f in glob.glob(comment_pattern):
+        if f"_{year}-{excluded_month}" not in os.path.basename(f):
+            all_files.append({"path": f, "type": "comment"})
+            
+    return all_files
+
+files_to_process = get_files_to_process("/home/coinsafe/business-finder/reddit-dumps/reddit", "2025", "00")
 
 # --- Globals for Models and Keywords ---
 _candidate_labels = ["pain_point", "idea"]
 _pain_point_keywords = ["frustrating", "problem", "difficult", "struggle", "annoying", "wish", "need", "can't", "should be", "hard to", "lack of", "missing", "broken"]
 _idea_keywords = ["idea", "solution", "concept", "opportunity", "build", "create", "develop", "imagine", "what if", "improve", "new way", "innovate"]
+
+# Red flags that indicate low-quality "ideas"
+EXCLUDE_PATTERNS = [
+    r"why doesn't someone",     # Pure speculation
+    r"wouldn't it be cool if",  # Fantasy thinking
+    r"in a perfect world",      # Unrealistic
+    r"they should just",        # Passive complaining
+    r"if I won the lottery",    # Not serious
+    r"magical solution",
+    r"cure for cancer",         # Too ambitious/vague
+    r"world peace",
+    r"free .* for everyone"     # Economically naive
+]
 
 # --- Database Functions ---
 def get_db_connection():
@@ -166,7 +192,7 @@ def get_classifier(gpu_id: int):
             _worker_classifier = pipeline("zero-shot-classification", model="typeform/distilbert-base-uncased-mnli", device=physical_gpu_id)
     return _worker_classifier
 
-def producer(raw_queue: mp.Queue, path: str):
+def producer(raw_queue: mp.Queue, path: str, item_type: str):
     """Reads a dump file and puts items into a queue for the CPU filters."""
     print(f"[Producer] Starting data ingestion for file: {path}")
     count = 0
@@ -174,24 +200,72 @@ def producer(raw_queue: mp.Queue, path: str):
         json_stream = getFileJsonStream(path, f)
         if json_stream:
             for item in json_stream:
-                raw_queue.put(item)
+                raw_queue.put((item, item_type))
                 count += 1
                 if count % LOG_INTERVAL == 0: print(f"[Producer] Ingested {count:,} items from {os.path.basename(path)}")
     print(f"[Producer] Finished ingesting {count:,} items from {os.path.basename(path)}. Signaling end.")
     for _ in range(N_CPU_PRODUCERS): raw_queue.put(None)
 
+def calculate_engagement_quality(item, item_type):
+    """Score based on discussion quality, not just volume"""
+    
+    # Get the full thread
+    ups = item.get('ups', 0)
+    if ups is None: ups = 0
+    
+    # Penalize pure rants (high emotion, low constructive value)
+    text = ""
+    if item_type == 'submission':
+        text = item.get('title', '') + '\n' + item.get('selftext', '')
+    elif item_type == 'comment':
+        text = item.get('body', '')
+
+    if not text: return 0
+
+    exclamation_ratio = text.count('!') / max(len(text), 1)
+    caps_ratio = sum(1 for c in text if c.isupper()) / max(len(text), 1)
+    
+    # Reward thoughtful, detailed posts
+    has_concrete_details = bool(re.search(r'\$\d+|[0-9]+%|\d+ (users|customers|months)', text))
+    word_count = len(text.split())
+    
+    # Calculate composite score
+    quality_score = ups
+    if exclamation_ratio > 0.05 or caps_ratio > 0.3:
+        quality_score *= 0.5  # Likely emotional venting
+    if has_concrete_details and word_count > 100:
+        quality_score *= 1.5  # Detailed, data-driven
+        
+    return quality_score
+
 def cpu_filter_worker(raw_queue: mp.Queue, db_queue: mp.Queue):
     """CPU worker that does initial filtering before passing to the main worker."""
     while True:
-        item = raw_queue.get()
-        if item is None:
+        item_tuple = raw_queue.get()
+        if item_tuple is None:
             db_queue.put(None) # Pass the signal along
             break
+        
+        item, item_type = item_tuple
 
         author = item.get("author", "")
         distinguished = item.get("distinguished")
 
         if "bot" in author.lower() or distinguished in ["moderator", "admin"]:
+            continue
+
+        # Context-aware filtering (Idea #2)
+        body = ""
+        if item_type == 'submission':
+            body = item.get('title', '') + '\n' + item.get('selftext', '')
+        elif item_type == 'comment':
+            body = item.get('body', '')
+
+        if body and any(re.search(p, body, re.IGNORECASE) for p in EXCLUDE_PATTERNS):
+            continue
+
+        # Engagement quality filter (Idea #3)
+        if calculate_engagement_quality(item, item_type) < 1:
             continue
         
         db_queue.put(item)
@@ -295,7 +369,7 @@ def run_ingestion_pass(file_path: str, item_type: str):
     raw_queue = mp.Queue(maxsize=RAW_QUEUE_SIZE)
     db_queue = mp.Queue(maxsize=DB_QUEUE_SIZE)
 
-    producer_proc = mp.Process(target=producer, args=(raw_queue, file_path))
+    producer_proc = mp.Process(target=producer, args=(raw_queue, file_path, item_type))
     cpu_procs = [mp.Process(target=cpu_filter_worker, args=(raw_queue, db_queue)) for _ in range(N_CPU_PRODUCERS)]
     db_nlp_procs = [mp.Process(target=db_and_nlp_worker, args=(i, db_queue, item_type)) for i in range(N_WORKERS)]
 
@@ -311,6 +385,12 @@ def run_ingestion_pass(file_path: str, item_type: str):
 # --- Main Orchestrator ---
 def main():
     setup_database()
+
+    imported_dir_base = "/home/coinsafe/business-finder/reddit-dumps/imported"
+    source_dir_base = "/home/coinsafe/business-finder/reddit-dumps/reddit"
+
+    # Ensure the base 'imported' directory exists
+    os.makedirs(imported_dir_base, exist_ok=True)
     
     for file_info in files_to_process:
         path = file_info["path"]
@@ -318,7 +398,21 @@ def main():
         if not os.path.exists(path):
             print(f"Warning: File not found at {path}. Skipping.")
             continue
+        
         run_ingestion_pass(path, item_type)
+
+        # Move the processed file
+        try:
+            relative_path = os.path.relpath(path, source_dir_base)
+            destination_path = os.path.join(imported_dir_base, relative_path)
+            
+            # Ensure the destination subdirectory (e.g., 'imported/submissions') exists
+            os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+            
+            print(f"--- Moving processed file to {destination_path} ---")
+            os.rename(path, destination_path)
+        except Exception as e:
+            print(f"Error moving file {path}: {e}")
     
     print("\nFull data ingestion process complete.")
 
