@@ -5,6 +5,7 @@ from qdrant_client import QdrantClient, models
 from typing import List, Dict, Any, Optional
 import os
 import random
+from pydantic import BaseModel, EmailStr
 
 # Configuration constants (should match business_plan_generation.py)
 ELASTICSEARCH_HOST = "localhost"
@@ -26,6 +27,17 @@ app.add_middleware(
 
 es_client: Optional[AsyncElasticsearch] = None
 qdrant_client: Optional[QdrantClient] = None
+
+# --- Pydantic Models ---
+class WaitlistRequest(BaseModel):
+    email: EmailStr
+
+class CommentRequest(BaseModel):
+    content: str
+
+class CommentReplyRequest(BaseModel):
+    content: str
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -133,4 +145,45 @@ async def get_random_plan() -> Dict[str, Any]:
             raise HTTPException(status_code=404, detail="Could not retrieve a random plan.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting random plan: {e}")
+
+@app.post("/api/waitlist")
+async def add_to_waitlist(request: WaitlistRequest):
+    """Adds an email to the premium waitlist."""
+    # For now, we'll just log the email. In a real application, you'd save this to a database.
+    print(f"New waitlist signup: {request.email}")
+    return {"success": True}
+
+@app.get("/api/plans/{id}", response_model=Dict[str, Any])
+async def get_plan_by_id(id: str) -> Dict[str, Any]:
+    """Retrieves a business plan by ID."""
+    if not es_client:
+        raise HTTPException(status_code=500, detail="Elasticsearch client not initialized.")
+    try:
+        resp = await es_client.get(index=ELASTICSEARCH_INDEX, id=id)
+        return resp['_source']
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Plan with ID {id} not found.")
+
+@app.get("/api/plans/{id}/comments", response_model=List[Dict[str, Any]])
+async def get_plan_comments(id: str):
+    """Retrieves comments for a business plan (mocked)."""
+    # Mock data - in a real app, you'd fetch this from a database
+    return [
+        {"id": 1, "author": "Alice", "content": "This is a great idea!"},
+        {"id": 2, "author": "Bob", "content": "I have some suggestions for the marketing plan."},
+    ]
+
+@app.post("/api/plans/{id}/comments", response_model=Dict[str, Any])
+async def add_plan_comment(id: str, request: CommentRequest):
+    """Adds a comment to a business plan (mocked)."""
+    # Mock data - in a real app, you'd save this and return the created object
+    print(f"New comment for plan {id}: {request.content}")
+    return {"id": 3, "author": "CurrentUser", "content": request.content}
+
+@app.post("/api/comments/{id}/reply", response_model=Dict[str, Any])
+async def reply_to_comment(id: int, request: CommentReplyRequest):
+    """Replies to a comment (mocked)."""
+    # Mock data
+    print(f"New reply to comment {id}: {request.content}")
+    return {"id": 4, "author": "CurrentUser", "content": request.content, "parent_comment_id": id}
 

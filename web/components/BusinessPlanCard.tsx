@@ -74,7 +74,7 @@ const BusinessPlanCard: React.FC<Props> = ({ plan }) => {
     }
 
     return (
-      <View key={key}>
+      <View key={key} style={styles.section}>
         <Text style={styles.h2}>{formatTitle(key)}</Text>
         {renderValue(value)}
       </View>
@@ -108,19 +108,19 @@ const BusinessPlanCard: React.FC<Props> = ({ plan }) => {
         <View style={styles.sourceCard}>
             <Text style={styles.h2}>Source Data</Text>
             {plan.subreddit && (
-                <View>
+                <View style={styles.sourceSection}>
                     <Text style={styles.h3}>Subreddit</Text>
                     <Text style={styles.text}>{plan.subreddit}</Text>
                 </View>
             )}
             {plan.summary && (
-                <View>
+                <View style={styles.sourceSection}>
                     <Text style={styles.h3}>Summary</Text>
                     <Markdown style={{ body: styles.text }}>{plan.summary}</Markdown>
                 </View>
             )}
             {plan.texts && plan.texts.length > 0 && (
-                <View>
+                <View style={styles.sourceSection}>
                     <Text style={styles.h3}>Original Texts</Text>
                     {plan.texts.map((text, index) => (
                         <Markdown key={index} style={{ body: styles.sourceText }}>{text.replace(/\n\n---\n\n/g, '\n\n---\n\n')}</Markdown>
@@ -136,81 +136,84 @@ const BusinessPlanCard: React.FC<Props> = ({ plan }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#191970',
   },
   card: {
-    backgroundColor: '#2c3e50',
-    borderRadius: 8,
-    padding: 20,
-    margin: 20,
+    backgroundColor: '#1a202c',
+    borderRadius: 12,
+    padding: 24,
+    margin: 16,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#D3D3D3',
+    marginBottom: 16,
+    color: '#e2e8f0',
+  },
+  section: {
+    marginBottom: 24,
   },
   h2: {
     fontSize: 22,
     fontWeight: 'bold',
-    marginTop: 15,
-    marginBottom: 5,
-    color: '#D3D3D3',
+    marginTop: 16,
+    marginBottom: 8,
+    color: '#cbd5e0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2d3748',
+    paddingBottom: 8,
   },
   h3: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginTop: 10,
-    marginBottom: 5,
-    color: '#D3D3D3',
+    marginTop: 12,
+    marginBottom: 6,
+    color: '#a0aec0',
   },
   h4: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginTop: 10,
-    marginBottom: 5,
-    color: '#D3D3D3',
+    marginTop: 8,
+    marginBottom: 4,
+    color: '#a0aec0',
   },
   text: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#D3D3D3',
+    fontSize: 16,
+    lineHeight: 24,
+    color: '#cbd5e0',
   },
   listItem: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 16,
+    lineHeight: 24,
     marginLeft: 10,
-    color: '#D3D3D3',
+    color: '#cbd5e0',
   },
   nestedObject: {
-    marginLeft: 10,
+    marginLeft: 12,
     borderLeftWidth: 2,
-    borderLeftColor: '#445c75',
-    paddingLeft: 10,
-    marginTop: 5,
-    marginBottom: 5,
-  },
-  codeBlock: {
-    backgroundColor: '#000000',
-    padding: 10,
-    borderRadius: 4,
+    borderLeftColor: '#4a5568',
+    paddingLeft: 12,
+    marginTop: 6,
+    marginBottom: 6,
   },
   sourceCard: {
-    backgroundColor: '#2c3e50',
-    borderRadius: 8,
-    padding: 20,
-    margin: 20,
+    backgroundColor: '#1a202c',
+    borderRadius: 12,
+    padding: 24,
+    margin: 16,
     marginTop: 0,
   },
+  sourceSection: {
+    marginBottom: 16,
+  },
   sourceText: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: '#B0C4DE',
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#a0aec0',
     fontStyle: 'italic',
     borderLeftWidth: 2,
-    borderLeftColor: '#445c75',
-    paddingLeft: 10,
-    marginTop: 10,
+    borderLeftColor: '#4a5568',
+    paddingLeft: 12,
+    marginTop: 8,
   },
 });
 
