@@ -8,11 +8,11 @@ import random
 from pydantic import BaseModel, EmailStr
 
 # Configuration constants (should match business_plan_generation.py)
-ELASTICSEARCH_HOST = "localhost"
-ELASTICSEARCH_PORT = 9200
+ELASTICSEARCH_HOST = os.getenv("ELASTICSEARCH_HOST", "localhost")
+ELASTICSEARCH_PORT = int(os.getenv("ELASTICSEARCH_PORT", "9200"))
 ELASTICSEARCH_INDEX = "business_plans"
-QDRANT_HOST = "localhost"
-QDRANT_PORT = 6333
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 QDRANT_BUSINESS_PLANS_COLLECTION = "business_plans_embeddings"
 
 app = FastAPI(title="Business Plan API")
