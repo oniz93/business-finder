@@ -1,59 +1,36 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>Laravel</title>
+        <title>{{ config('app.name', 'Laravel') }}</title>
 
-    <link rel="icon" href="/favicon.ico" sizes="any">
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <!-- Fonts -->
+        <link rel="preconnect" href="https://fonts.bunny.net">
+        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.bunny.net">
-    <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600" rel="stylesheet" />
+        <!-- Scripts -->
+        @vite(['resources/css/app.css', 'resources/js/app.js'])
+    </head>
+    <body class="font-sans antialiased">
+        <div class="min-h-screen bg-gray-100">
+            @include('layouts.navigation')
 
-    <!-- Styles -->
-    @vite('resources/css/app.css')
-</head>
-<body class="bg-gray-900 text-white">
-    <nav class="p-6 bg-gray-800 flex justify-between mb-6">
-        <ul class="flex items-center">
-            <li>
-                <a href="/" class="p-3">Home</a>
-            </li>
-            <li>
-                <a href="/dashboard" class="p-3">Dashboard</a>
-            </li>
-            <li>
-                <a href="/business-plans" class="p-3">Business Plans</a>
-            </li>
-        </ul>
+            <!-- Page Heading -->
+            @isset($header)
+                <header class="bg-white shadow">
+                    <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+                        {{ $header }}
+                    </div>
+                </header>
+            @endisset
 
-        <ul class="flex items-center">
-            @auth
-                <li>
-                    <a href="" class="p-3">{{ auth()->user()->name }}</a>
-                </li>
-                <li>
-                    <form action="{{ route('logout') }}" method="post" class="p-3 inline">
-                        @csrf
-                        <button type="submit">Logout</button>
-                    </form>
-                </li>
-            @endauth
-
-            @guest
-                <li>
-                    <a href="{{ route('login') }}" class="p-3">Login</a>
-                </li>
-                <li>
-                    <a href="{{ route('register') }}" class="p-3">Register</a>
-                </li>
-            @endguest
-        </ul>
-    </nav>
-    @yield('content')
-</body>
+            <!-- Page Content -->
+            <main>
+                {{ $slot }}
+            </main>
+        </div>
+    </body>
 </html>

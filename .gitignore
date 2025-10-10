@@ -215,3 +215,4 @@ processed_data
 crypto
 **/*.csv
 web2
+.env.laravel

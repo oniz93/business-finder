@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use Elastic\Elasticsearch\Client;
+use Elastic\Elasticsearch\ClientBuilder;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -11,7 +13,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(Client::class, function ($app) {
+            return ClientBuilder::create()
+                ->setHosts([env('ELASTICSEARCH_HOST')])
+                ->build();
+        });
     }
 
     /**
