@@ -9,12 +9,16 @@ class WaitlistController extends Controller
 {
     public function store(Request $request)
     {
-        $request->validate([
+        $validator = \Validator::make($request->all(), [
             'email' => 'required|email|unique:waitlist_entries',
         ]);
 
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
         WaitlistEntry::create($request->only('email'));
 
-        return back()->with('success', 'You have been added to the waitlist!');
+        return response()->json(['success' => 'You have been added to the waitlist!']);
     }
 }
