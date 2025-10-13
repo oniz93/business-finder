@@ -34,6 +34,11 @@ class ProfileController extends Controller
 
         $request->user()->save();
 
+        $request->user()->profile()->updateOrCreate(
+            ['user_id' => $request->user()->id],
+            $request->validated()
+        );
+
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
     }
 

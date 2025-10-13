@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Venturecraft\Revisionable\RevisionableTrait;
 
 class BusinessPlan extends Model
 {
-    use HasFactory;
+    use HasFactory, RevisionableTrait;
 
     public $incrementing = false; // Disable auto-incrementing for the primary key
     protected $keyType = 'string'; // Set the primary key type to string
@@ -47,4 +48,18 @@ class BusinessPlan extends Model
         'management_team' => 'array',
         'financial_projections' => 'array',
     ];
+    public function collections()
+    {
+        return $this->belongsToMany(Collection::class, 'business_plan_collection');
+    }
+
+    public function comments()
+    {
+        return $this->hasMany(Comment::class);
+    }
+
+    public function feedback()
+    {
+        return $this->hasMany(Feedback::class);
+    }
 }

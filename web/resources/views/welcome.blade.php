@@ -31,7 +31,7 @@
                 <h2 class="text-3xl font-bold mb-3 text-green-400">{{ $plan->title }}</h2>
                 <p class="text-gray-400 mb-6">{{ Str::limit($plan->executive_summary, 180) }}</p>
                 <div class="flex justify-between items-center">
-                    <a href="{{ route('business-plan', ['id' => $plan->id]) }}" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300">
+                    <a href="{{ route('business-plan', ['businessPlan' => $plan->id]) }}" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300">
                         View Full Plan
                     </a>
                     <a href="{{ route('home') }}" class="text-green-400 hover:text-green-300 font-semibold py-3 px-6 transition duration-300">

@@ -9,11 +9,18 @@
         "php": "^8.3",
         "elasticsearch/elasticsearch": "~8.5",
         "laravel/framework": "^12.0",
+        "laravel/reverb": "^1.6",
         "laravel/scout": "^10.19",
+        "laravel/socialite": "^5.23",
         "laravel/tinker": "^2.10.1",
         "livewire/livewire": "^3.6",
+        "pragmarx/google2fa-laravel": "^2.3",
+        "riari/laravel-forum": "^7.0",
+        "spatie/laravel-activitylog": "^4.10",
+        "spatie/laravel-tags": "^4.10",
         "symfony/http-client": "^7.3",
-        "symfony/mailgun-mailer": "^7.3"
+        "symfony/mailgun-mailer": "^7.3",
+        "venturecraft/revisionable": "^1.42"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
