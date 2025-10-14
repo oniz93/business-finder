@@ -36,6 +36,7 @@ class User extends Authenticatable
         'provider_id',
         'provider_token',
         'provider_refresh_token',
+        'notification_preferences',
     ];
 
     public function profile()
@@ -61,6 +62,16 @@ class User extends Authenticatable
     public function teams()
     {
         return $this->belongsToMany(Team::class, 'team_user');
+    }
+
+    public function ownedTeams()
+    {
+        return $this->hasMany(Team::class, 'user_id');
+    }
+
+    public function isMemberOfTeam(Team $team)
+    {
+        return $this->ownedTeams->contains($team) || $this->teams->contains($team);
     }
 
     public function widgets()
@@ -103,6 +114,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'notification_preferences' => 'array',
         ];
     }
 }

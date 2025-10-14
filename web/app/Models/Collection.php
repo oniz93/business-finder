@@ -10,7 +10,16 @@ class Collection extends Model
 {
     use HasFactory, HasTags;
 
-    protected $fillable = ['user_id', 'name', 'description'];
+    protected $fillable = ['user_id', 'name', 'description', 'shareable_link'];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($collection) {
+            $collection->shareable_link = \Illuminate\Support\Str::random(32);
+        });
+    }
 
     public function user()
     {

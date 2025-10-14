@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('feedback', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->foreignId('business_plan_id')->constrained()->onDelete('cascade');
+            $table->foreignUuid('business_plan_id')->constrained()->onDelete('cascade');
             $table->unsignedTinyInteger('rating');
             $table->text('comments')->nullable();
             $table->timestamps();
