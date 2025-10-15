@@ -13,6 +13,7 @@
     @vite('resources/css/app.css')
 </head>
 <body class="bg-gray-900 text-white font-sans antialiased">
+    @include('layouts.navigation')
     <div class="min-h-screen flex flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
 
         <!-- Hero Section -->

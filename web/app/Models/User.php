@@ -37,6 +37,7 @@ class User extends Authenticatable
         'provider_token',
         'provider_refresh_token',
         'notification_preferences',
+        'plan',
     ];
 
     public function profile()
@@ -92,6 +93,21 @@ class User extends Authenticatable
     public function reviews()
     {
         return $this->hasMany(Review::class);
+    }
+
+    public function subscription()
+    {
+        return $this->hasOne(Subscription::class);
+    }
+
+    public function hasSubscribed()
+    {
+        return $this->subscription && $this->subscription->stripe_status === 'active';
+    }
+
+    public function onTrial()
+    {
+        return $this->subscription && $this->subscription->onTrial();
     }
 
     /**

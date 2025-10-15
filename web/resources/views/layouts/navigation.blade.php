@@ -11,23 +11,42 @@
                 </div>
 
                 <!-- Navigation Links -->
+                @auth
                 <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
                     <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                         {{ __('Dashboard') }}
                     </x-nav-link>
-                    <x-nav-link :href="route('resources.index')" :active="request()->routeIs('resources.index')">
-                        {{ __('Resources') }}
-                    </x-nav-link>
-                    <x-nav-link :href="route('scoring-criteria.index')" :active="request()->routeIs('scoring-criteria.index')">
-                        {{ __('Scoring Criteria') }}
-                    </x-nav-link>
+                    @if(in_array(auth()->user()->plan, ['founder', 'innovator', 'enterprise']))
+                        <x-nav-link :href="route('resources.index')" :active="request()->routeIs('resources.index')">
+                            {{ __('Resources') }}
+                        </x-nav-link>
+                    @endif
+                    @if(in_array(auth()->user()->plan, ['innovator', 'enterprise']))
+                        <x-nav-link :href="route('scoring-criteria.index')" :active="request()->routeIs('scoring-criteria.index')">
+                            {{ __('Scoring Criteria') }}
+                        </x-nav-link>
+                    @endif
                     <x-nav-link :href="route('marketplace.index')" :active="request()->routeIs('marketplace.index')">
                         {{ __('Marketplace') }}
                     </x-nav-link>
+                    @if(auth()->user()->plan === 'enterprise')
+                        <x-nav-link :href="route('teams.index')" :active="request()->routeIs('teams.index')">
+                            {{ __('Teams') }}
+                        </x-nav-link>
+                    @endif
                 </div>
-            </div>
 
-            <!-- Settings Dropdown -->
+                @if(in_array(auth()->user()->plan, ['founder', 'innovator', 'enterprise']))
+                <!-- Search bar -->
+                <div class="hidden sm:flex sm:items-center sm:ms-6">
+                    <form action="{{ route('business-plan-search') }}" method="GET" class="flex">
+                        <input type="text" name="q" placeholder="Search for business plans..." class="px-2 py-1 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100">
+                        <button type="submit" class="ml-2 px-3 py-1 bg-indigo-600 text-white rounded-md">Search</button>
+                    </form>
+                </div>
+                @endif
+                @endauth
+            </div>
             <div class="hidden sm:flex sm:items-center sm:ms-6">
                 @auth
                     @livewire('in-app-notifications')
@@ -91,6 +110,7 @@
         </div>
 
         <!-- Responsive Settings Options -->
+        @auth
         <div class="pt-4 pb-1 border-t border-gray-200 dark:border-gray-600">
             <div class="px-4">
                 <div class="font-medium text-base text-gray-800 dark:text-gray-200">{{ Auth::user()->name }}</div>
@@ -114,5 +134,6 @@
                 </form>
             </div>
         </div>
+        @endauth
     </div>
 </nav>

@@ -24,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
+            'subscription' => \App\Http\Middleware\SubscriptionMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

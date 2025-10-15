@@ -34,7 +34,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         RateLimiter::for('guests', function (Request $request) {
-            return Limit::perDay(5)->by($request->ip());
+            return Limit::perMinute(60)->by($request->ip());
         });
     }
 }

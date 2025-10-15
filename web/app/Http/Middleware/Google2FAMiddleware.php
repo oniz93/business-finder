@@ -17,7 +17,7 @@ class Google2FAMiddleware
     public function handle(Request $request, Closure $next): Response
     {
         if (auth()->check() && auth()->user()->google2fa_enabled) {
-            if (!session(Constants::SESSION_AUTH_PASSED)) {
+            if (!$request->is('2fa/verify') && !session(Constants::SESSION_AUTH_PASSED)) {
                 return redirect()->route('2fa.verify');
             }
         }

@@ -19,6 +19,7 @@ class BusinessPlanSearch extends Component
     public $geographicRelevance = '';
     public $sortBy = 'created_at';
     public $sortDirection = 'desc';
+    public $q = '';
 
     protected $queryString = [
         'industry' => ['except' => ''],
@@ -30,6 +31,7 @@ class BusinessPlanSearch extends Component
         'geographicRelevance' => ['except' => ''],
         'sortBy' => ['except' => 'created_at'],
         'sortDirection' => ['except' => 'desc'],
+        'q' => ['except' => ''],
     ];
 
     public function mount()
@@ -55,6 +57,15 @@ class BusinessPlanSearch extends Component
     public function render()
     {
         $query = BusinessPlan::query();
+
+        if ($this->q) {
+            $query->where(function ($query) {
+                $query->where('title', 'like', '%' . $this->q . '%')
+                    ->orWhere('executive_summary', 'like', '%' . $this->q . '%')
+                    ->orWhere('problem', 'like', '%' . $this->q . '%')
+                    ->orWhere('solution', 'like', '%' . $this->q . '%');
+            });
+        }
 
         if ($this->industry) {
             $query->where('industry', 'like', '%' . $this->industry . '%');
