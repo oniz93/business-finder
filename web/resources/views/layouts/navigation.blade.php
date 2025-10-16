@@ -107,6 +107,31 @@
             <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                 {{ __('Dashboard') }}
             </x-responsive-nav-link>
+
+            <x-responsive-nav-link :href="route('business-plan-search')" :active="request()->routeIs('business-plan-search')">
+                {{ __('Search') }}
+            </x-responsive-nav-link>
+
+            @auth
+                @if(in_array(auth()->user()->plan, ['founder', 'innovator', 'enterprise']))
+                    <x-responsive-nav-link :href="route('resources.index')" :active="request()->routeIs('resources.index')">
+                        {{ __('Resources') }}
+                    </x-responsive-nav-link>
+                @endif
+                @if(in_array(auth()->user()->plan, ['innovator', 'enterprise']))
+                    <x-responsive-nav-link :href="route('scoring-criteria.index')" :active="request()->routeIs('scoring-criteria.index')">
+                        {{ __('Scoring Criteria') }}
+                    </x-responsive-nav-link>
+                @endif
+                <x-responsive-nav-link :href="route('marketplace.index')" :active="request()->routeIs('marketplace.index')">
+                    {{ __('Marketplace') }}
+                </x-responsive-nav-link>
+                @if(auth()->user()->plan === 'enterprise')
+                    <x-responsive-nav-link :href="route('teams.index')" :active="request()->routeIs('teams.index')">
+                        {{ __('Teams') }}
+                    </x-responsive-nav-link>
+                @endif
+            @endauth
         </div>
 
         <!-- Responsive Settings Options -->
