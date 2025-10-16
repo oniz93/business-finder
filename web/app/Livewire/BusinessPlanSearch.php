@@ -2,14 +2,18 @@
 
 namespace App\Livewire;
 
+use App\Data\BusinessPlanDao;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Component;
 use Livewire\WithPagination;
-use App\Models\BusinessPlan;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\Request;
 
 class BusinessPlanSearch extends Component
 {
     use WithPagination;
 
+    public $search = '';
     public $industry = '';
     public $marketSize = '';
     public $sentiment = '';
@@ -17,11 +21,11 @@ class BusinessPlanSearch extends Component
     public $timeToMarket = '';
     public $technologyStack = '';
     public $geographicRelevance = '';
-    public $sortBy = 'created_at';
+    public $sortBy = 'popularity';
     public $sortDirection = 'desc';
-    public $q = '';
 
     protected $queryString = [
+        'search' => ['except' => ''],
         'industry' => ['except' => ''],
         'marketSize' => ['except' => ''],
         'sentiment' => ['except' => ''],
@@ -29,67 +33,65 @@ class BusinessPlanSearch extends Component
         'timeToMarket' => ['except' => ''],
         'technologyStack' => ['except' => ''],
         'geographicRelevance' => ['except' => ''],
-        'sortBy' => ['except' => 'created_at'],
-        'sortDirection' => ['except' => 'desc'],
-        'q' => ['except' => ''],
+        'sortBy' => [
+            'except' => 'popularity',
+            'as' => 'sort_by' // Alias for URL parameter
+        ],
+        'sortDirection' => [
+            'except' => 'desc',
+            'as' => 'sort_dir' // Alias for URL parameter
+        ],
     ];
 
-    public function mount()
+    public function mount(Request $request)
     {
+        // Populate properties from old input (after POST redirect) or GET request
+        $this->search = old('search', $request->input('search', ''));
+        $this->industry = old('industry', $request->input('industry', ''));
+        $this->marketSize = old('marketSize', $request->input('marketSize', ''));
+        $this->sentiment = old('sentiment', $request->input('sentiment', ''));
+        $this->requiredCapital = old('requiredCapital', $request->input('requiredCapital', ''));
+        $this->timeToMarket = old('timeToMarket', $request->input('timeToMarket', ''));
+        $this->technologyStack = old('technologyStack', $request->input('technologyStack', ''));
+        $this->geographicRelevance = old('geographicRelevance', $request->input('geographicRelevance', ''));
+        $this->sortBy = old('sortBy', $request->input('sortBy', 'popularity'));
+        $this->sortDirection = old('sortDirection', $request->input('sortDirection', 'desc'));
+
         $this->resetPage();
     }
 
-    public function updating($name, $value)
+    public function render(BusinessPlanDao $businessPlanDao)
     {
-        $this->resetPage();
-    }
+        $page = $this->getPage();
+        $perPage = 10;
 
-    public function sortBy($field)
-    {
-        if ($this->sortBy === $field) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            $this->sortBy = $field;
-            $this->sortDirection = 'asc';
-        }
-    }
+        $searchParams = [
+            'search' => $this->search,
+            'industry' => $this->industry,
+            'market_size' => $this->marketSize,
+            'sentiment' => $this->sentiment,
+            'required_capital' => $this->requiredCapital,
+            'time_to_market' => $this->timeToMarket,
+            'technology_stack' => $this->technologyStack,
+            'geographic_relevance' => $this->geographicRelevance,
+            'sort' => $this->sortBy . '_' . $this->sortDirection,
+            'from' => ($page - 1) * $perPage,
+            'size' => $perPage,
+        ];
 
-    public function render()
-    {
-        $query = BusinessPlan::query();
+        Log::info('BusinessPlanSearch: Search Params', $searchParams);
 
-        if ($this->q) {
-            $query->where(function ($query) {
-                $query->where('title', 'like', '%' . $this->q . '%')
-                    ->orWhere('executive_summary', 'like', '%' . $this->q . '%')
-                    ->orWhere('problem', 'like', '%' . $this->q . '%')
-                    ->orWhere('solution', 'like', '%' . $this->q . '%');
-            });
-        }
+        $result = $businessPlanDao->search($searchParams);
 
-        if ($this->industry) {
-            $query->where('industry', 'like', '%' . $this->industry . '%');
-        }
-        if ($this->marketSize) {
-            $query->where('market_size', 'like', '%' . $this->marketSize . '%');
-        }
-        if ($this->sentiment) {
-            $query->where('sentiment', 'like', '%' . $this->sentiment . '%');
-        }
-        if ($this->requiredCapital) {
-            $query->where('required_capital', 'like', '%' . $this->requiredCapital . '%');
-        }
-        if ($this->timeToMarket) {
-            $query->where('time_to_market', 'like', '%' . $this->timeToMarket . '%');
-        }
-        if ($this->technologyStack) {
-            $query->where('technology_stack', 'like', '%' . $this->technologyStack . '%');
-        }
-        if ($this->geographicRelevance) {
-            $query->where('geographic_relevance', 'like', '%' . $this->geographicRelevance . '%');
-        }
+        Log::info('BusinessPlanSearch: Search Result', ['total' => $result['total'], 'plans_count' => count($result['plans'])]);
 
-        $businessPlans = $query->orderBy($this->sortBy, $this->sortDirection)->paginate(10);
+        $businessPlans = new LengthAwarePaginator(
+            $result['plans'],
+            $result['total'],
+            $perPage,
+            $page,
+            ['path' => request()->url(), 'query' => request()->query()]
+        );
 
         return view('livewire.business-plan-search', [
             'businessPlans' => $businessPlans,

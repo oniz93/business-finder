@@ -104,44 +104,62 @@ class BusinessPlanDao
      */
     public function search(array $searchParams): array
     {
+        $boolQuery = [];
+
+        if (!empty($searchParams['search'])) {
+            $boolQuery['must'][] = [
+                            'query_string' => [
+                                'query' => $searchParams['search'],
+                                'fields' => ['*'], // Search across all fields
+                                'default_operator' => 'OR', // Default operator if not specified in query string
+                            ],
+
+            ];
+        }
+
+        $filters = [];
+        if (!empty($searchParams['industry'])) {
+            $filters[] = ['match' => ['industry' => $searchParams['industry']]];
+        }
+
+        if (!empty($searchParams['market_size'])) {
+            $filters[] = ['range' => ['market_size' => ['gte' => $searchParams['market_size']]]];
+        }
+
+        if (!empty($searchParams['sentiment'])) {
+            $filters[] = ['match' => ['sentiment' => $searchParams['sentiment']]];
+        }
+
+        if (!empty($searchParams['required_capital'])) {
+            $filters[] = ['range' => ['required_capital' => ['lte' => $searchParams['required_capital']]]];
+        }
+
+        if (!empty($searchParams['time_to_market'])) {
+            $filters[] = ['range' => ['time_to_market' => ['lte' => $searchParams['time_to_market']]]];
+        }
+
+        if (!empty($searchParams['technology_stack'])) {
+            $filters[] = ['match' => ['technology_stack' => $searchParams['technology_stack']]];
+        }
+
+        if (!empty($searchParams['geographic_relevance'])) {
+            $filters[] = ['match' => ['geographic_relevance' => $searchParams['geographic_relevance']]];
+        }
+
+        if (!empty($filters)) {
+            $boolQuery['filter'] = $filters;
+        }
+
+        $query = empty($boolQuery) ? ['match_all' => (object)[]] : ['bool' => $boolQuery];
+
         $params = [
             'index' => $this->index,
             'body' => [
-                'query' => [
-                    'bool' => [
-                        'must' => [],
-                    ],
-                ],
+                'query' => $query,
             ],
+            'from' => $searchParams['from'] ?? 0,
+            'size' => $searchParams['size'] ?? 10,
         ];
-
-        if (isset($searchParams['industry'])) {
-            $params['body']['query']['bool']['must'][] = ['match' => ['industry' => $searchParams['industry']]];
-        }
-
-        if (isset($searchParams['market_size'])) {
-            $params['body']['query']['bool']['must'][] = ['range' => ['market_size' => ['gte' => $searchParams['market_size']]]];
-        }
-
-        if (isset($searchParams['sentiment'])) {
-            $params['body']['query']['bool']['must'][] = ['match' => ['sentiment' => $searchParams['sentiment']]];
-        }
-
-        if (isset($searchParams['required_capital'])) {
-            $params['body']['query']['bool']['must'][] = ['range' => ['required_capital' => ['lte' => $searchParams['required_capital']]]];
-        }
-
-        if (isset($searchParams['time_to_market'])) {
-            $params['body']['query']['bool']['must'][] = ['range' => ['time_to_market' => ['lte' => $searchParams['time_to_market']]]];
-        }
-
-        if (isset($searchParams['technology_stack'])) {
-            $params['body']['query']['bool']['must'][] = ['match' => ['technology_stack' => $searchParams['technology_stack']]];
-        }
-
-        if (isset($searchParams['geographic_relevance'])) {
-            $params['body']['query']['bool']['must'][] = ['match' => ['geographic_relevance' => $searchParams['geographic_relevance']]];
-        }
 
         if (isset($searchParams['sort'])) {
             $sort = explode('_', $searchParams['sort']);
@@ -160,7 +178,7 @@ class BusinessPlanDao
                 [$field => $order],
             ];
         }
-
+//        dd($searchParams, $params);
         $response = $this->elasticsearch->search($params);
 
         $plans = [];
@@ -171,6 +189,9 @@ class BusinessPlanDao
             $plans[] = $plan;
         }
 
-        return $plans;
+        return [
+            'plans' => $plans,
+            'total' => $response['hits']['total']['value'],
+        ];
     }
 }

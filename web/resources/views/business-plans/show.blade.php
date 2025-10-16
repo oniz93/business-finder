@@ -277,9 +277,17 @@
                                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">IDs in Cluster</dt>
                                 <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ implode(', ', $plan->ids_in_cluster) }}</dd>
                             </div>
-                            <div class="sm:col-span-2">
+                        </dl>
+                        <dl class="grid grid-cols-12 md:grid-cols-12 gap-x-12 gap-y-12">
+                            <div class="sm:col-span-12">
                                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Texts</dt>
-                                <dd class="mt-1 text-sm text-gray-900 dark:text-white prose dark:prose-invert">@foreach($plan->texts as $text)<p>{{ $text }}</p>@endforeach</dd>
+                                <dd class="mt-1 text-sm text-gray-900 dark:text-white">
+                                    @foreach($plan->texts as $text)
+                                        <div class="prose dark:prose-invert max-w-none mb-4 p-4 rounded-lg @if($loop->even) bg-gray-50 dark:bg-gray-800 @endif">
+                                            {!! \Illuminate\Support\Str::markdown($text) !!}
+                                        </div>
+                                    @endforeach
+                                </dd>
                             </div>
                         </dl>
                     </div>
