@@ -216,3 +216,7 @@ crypto
 **/*.csv
 web2
 .env.laravel
+.gemini
+.specify
+web/@FEATURES.md
+**/.DS_Store
