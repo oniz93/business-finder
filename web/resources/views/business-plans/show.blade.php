@@ -15,6 +15,26 @@
     <div class="py-12 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 min-h-screen">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
 
+            @auth
+            <div class="mb-6 flex justify-end space-x-4">
+                <a href="{{ route('business-plans.canvas', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                    View Canvas
+                </a>
+                <a href="{{ route('business-plans.pitch-deck', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+                    View Pitch Deck
+                </a>
+                <a href="{{ route('business-plans.financial-projections', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                    Financial Projections
+                </a>
+                <a href="{{ route('business-plans.edit', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Edit Business Plan
+                </a>
+                <button onclick="Livewire.dispatchTo('save-to-collection-modal', 'openModal', { businessPlanId: {{ $plan->id }} })" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Save to Collection
+                </button>
+            </div>
+            @endauth
+
             <!-- Hero Section - Executive Summary -->
             <div class="mb-8 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl shadow-2xl overflow-hidden">
                 <div class="p-8 sm:p-12">
@@ -24,7 +44,7 @@
                         </svg>
                         <h3 class="text-2xl font-bold text-white">Executive Summary</h3>
                     </div>
-                    <p class="text-lg text-blue-50 leading-relaxed">{{ $plan->executive_summary }}</p>
+                    <div class="prose prose-invert max-w-none text-lg text-blue-50 leading-relaxed">{!! Str::markdown($plan->executive_summary) !!}</div>
                 </div>
             </div>
 
@@ -42,7 +62,7 @@
                         </div>
                     </div>
                     <div class="p-6">
-                        <p class="text-gray-700 dark:text-gray-300 leading-relaxed">{{ $plan->problem }}</p>
+                        <div class="prose prose-invert max-w-none text-gray-700 dark:text-gray-300 leading-relaxed">{!! Str::markdown($plan->problem) !!}</div>
                     </div>
                 </div>
 
@@ -57,7 +77,7 @@
                         </div>
                     </div>
                     <div class="p-6">
-                        <p class="text-gray-700 dark:text-gray-300 leading-relaxed">{{ $plan->solution }}</p>
+                        <div class="prose prose-invert max-w-none text-gray-700 dark:text-gray-300 leading-relaxed">{!! Str::markdown($plan->solution) !!}</div>
                     </div>
                 </div>
             </div>
@@ -83,16 +103,16 @@
                             @if(is_array($value))
                                 <ul class="space-y-2">
                                     @foreach($value as $item)
-                                        <li class="flex items-start text-gray-700 dark:text-gray-300">
+                                        <li class="flex items-start text-gray-700 dark:text-gray-300 prose prose-invert max-w-none">
                                             <svg class="w-5 h-5 text-purple-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
                                             </svg>
-                                            <span>{{ $item }}</span>
+                                            <span>{!! Str::markdown($item) !!}</span>
                                         </li>
                                     @endforeach
                                 </ul>
                             @else
-                                <p class="text-gray-700 dark:text-gray-300 pl-4 leading-relaxed">{{ $value }}</p>
+                                <div class="prose prose-invert max-w-none text-gray-700 dark:text-gray-300 pl-4 leading-relaxed">{!! Str::markdown($value) !!}</div>
                             @endif
                         </div>
                     @endforeach
@@ -104,7 +124,7 @@
                 <div class="bg-gradient-to-r from-orange-500 to-red-600 p-6">
                     <div class="flex items-center">
                         <svg class="w-7 h-7 text-white mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
                         </svg>
                         <h3 class="text-2xl font-bold text-white">Competitive Landscape</h3>
                     </div>
@@ -119,16 +139,16 @@
                             @if(is_array($value))
                                 <ul class="space-y-2">
                                     @foreach($value as $item)
-                                        <li class="flex items-start text-gray-700 dark:text-gray-300">
+                                        <li class="flex items-start text-gray-700 dark:text-gray-300 prose prose-invert max-w-none">
                                             <svg class="w-5 h-5 text-orange-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
                                             </svg>
-                                            <span>{{ $item }}</span>
+                                            <span>{!! Str::markdown($item) !!}</span>
                                         </li>
                                     @endforeach
                                 </ul>
                             @else
-                                <p class="text-gray-700 dark:text-gray-300 pl-4 leading-relaxed">{{ $value }}</p>
+                                <div class="prose prose-invert max-w-none text-gray-700 dark:text-gray-300 pl-4 leading-relaxed">{!! Str::markdown($value) !!}</div>
                             @endif
                         </div>
                     @endforeach
@@ -156,16 +176,16 @@
                             @if(is_array($value))
                                 <ul class="space-y-2">
                                     @foreach($value as $item)
-                                        <li class="flex items-start text-gray-700 dark:text-gray-300">
+                                        <li class="flex items-start text-gray-700 dark:text-gray-300 prose prose-invert max-w-none">
                                             <svg class="w-5 h-5 text-cyan-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
                                             </svg>
-                                            <span>{{ $item }}</span>
+                                            <span>{!! Str::markdown($item) !!}</span>
                                         </li>
                                     @endforeach
                                 </ul>
                             @else
-                                <p class="text-gray-700 dark:text-gray-300 pl-4 leading-relaxed">{{ $value }}</p>
+                                <div class="prose prose-invert max-w-none text-gray-700 dark:text-gray-300 pl-4 leading-relaxed">{!! Str::markdown($value) !!}</div>
                             @endif
                         </div>
                     @endforeach
@@ -183,7 +203,7 @@
                     </div>
                 </div>
                 <div class="p-8">
-                    <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-6">{{ $plan->management_team['description'] }}</p>
+                    <div class="prose prose-invert max-w-none text-gray-700 dark:text-gray-300 leading-relaxed mb-6">{!! Str::markdown($plan->management_team['description']) !!}</div>
 
                     <h4 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
                         <span class="w-2 h-2 bg-teal-500 rounded-full mr-2"></span>
@@ -192,8 +212,8 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         @foreach($plan->management_team['roles'] as $role)
                             <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border-l-4 border-teal-500">
-                                <h5 class="font-bold text-gray-900 dark:text-white mb-2">{{ $role['role'] }}</h5>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">{{ $role['description'] }}</p>
+                                <h5 class="font-bold text-gray-900 dark:text-white mb-2 prose prose-invert max-w-none">{!! Str::markdown($role['role']) !!}</h5>
+                                <div class="prose prose-invert max-w-none text-sm text-gray-600 dark:text-gray-400">{!! Str::markdown($role['description']) !!}</div>
                             </div>
                         @endforeach
                     </div>
@@ -220,16 +240,16 @@
                             @if(is_array($value))
                                 <ul class="space-y-2">
                                     @foreach($value as $item)
-                                        <li class="flex items-start text-gray-700 dark:text-gray-300">
+                                        <li class="flex items-start text-gray-700 dark:text-gray-300 prose prose-invert max-w-none">
                                             <svg class="w-5 h-5 text-emerald-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
                                             </svg>
-                                            <span>{{ $item }}</span>
+                                            <span>{!! Str::markdown($item) !!}</span>
                                         </li>
                                     @endforeach
                                 </ul>
                             @else
-                                <p class="text-gray-700 dark:text-gray-300 pl-4 leading-relaxed">{{ $value }}</p>
+                                <div class="prose prose-invert max-w-none text-gray-700 dark:text-gray-300 pl-4 leading-relaxed">{!! Str::markdown($value) !!}</div>
                             @endif
                         </div>
                     @endforeach
@@ -251,7 +271,7 @@
                         <svg x-show="!open" class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                         <svg x-show="open" class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
                     </div>
-                    <div x-show="open" class="p-8">
+                    <div x-show="open" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 transform scale-90" x-transition:enter-end="opacity-100 transform scale-100" x-transition:leave="transition ease-in duration-300" x-transition:leave-start="opacity-100 transform scale-100" x-transition:leave-end="opacity-0 transform scale-90" class="mt-4 p-4 bg-gray-700 rounded-lg">
                         <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-8">
                             <div class="sm:col-span-1">
                                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Subreddit</dt>
@@ -271,7 +291,7 @@
                             </div>
                             <div class="sm:col-span-2">
                                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Summary</dt>
-                                <dd class="mt-1 text-base text-gray-900 dark:text-white">{{ $plan->summary }}</dd>
+                                <dd class="mt-1 text-base text-gray-900 dark:text-white prose prose-invert max-w-none">{!! Str::markdown($plan->summary) !!}</dd>
                             </div>
                             <div class="sm:col-span-2">
                                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">IDs in Cluster</dt>
@@ -304,10 +324,14 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                     </svg>
                     <h3 class="text-3xl font-bold text-white mb-4">Ready to Take Action?</h3>
-                    <p class="text-xl text-purple-50 leading-relaxed max-w-3xl mx-auto">{{ $plan->call_to_action }}</p>
+                    <div class="prose prose-invert max-w-none text-xl text-purple-50 leading-relaxed">{!! Str::markdown($plan->call_to_action) !!}</div>
                 </div>
             </div>
 
         </div>
+        @auth
+            @livewire('save-to-collection-modal', ['businessPlanId' => $plan->id])
+            @livewire('business-plan-feedback', ['businessPlanId' => $plan->id])
+        @endauth
     </div>
 </x-app-layout>

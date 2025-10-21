@@ -14,25 +14,17 @@ class BusinessPlanSearch extends Component
     use WithPagination;
 
     public $search = '';
-    public $industry = '';
-    public $marketSize = '';
-    public $sentiment = '';
-    public $requiredCapital = '';
-    public $timeToMarket = '';
-    public $technologyStack = '';
-    public $geographicRelevance = '';
+    public $subreddit = '';
+    public $viability_score_min = null;
+    public $viability_score_max = null;
     public $sortBy = 'popularity';
     public $sortDirection = 'desc';
 
     protected $queryString = [
         'search' => ['except' => ''],
-        'industry' => ['except' => ''],
-        'marketSize' => ['except' => ''],
-        'sentiment' => ['except' => ''],
-        'requiredCapital' => ['except' => ''],
-        'timeToMarket' => ['except' => ''],
-        'technologyStack' => ['except' => ''],
-        'geographicRelevance' => ['except' => ''],
+        'subreddit' => ['except' => ''],
+        'viability_score_min' => ['except' => ''],
+        'viability_score_max' => ['except' => ''],
         'sortBy' => [
             'except' => 'popularity',
             'as' => 'sort_by' // Alias for URL parameter
@@ -41,19 +33,16 @@ class BusinessPlanSearch extends Component
             'except' => 'desc',
             'as' => 'sort_dir' // Alias for URL parameter
         ],
+        'page' => ['except' => 1],
     ];
 
     public function mount(Request $request)
     {
         // Populate properties from old input (after POST redirect) or GET request
         $this->search = old('search', $request->input('search', ''));
-        $this->industry = old('industry', $request->input('industry', ''));
-        $this->marketSize = old('marketSize', $request->input('marketSize', ''));
-        $this->sentiment = old('sentiment', $request->input('sentiment', ''));
-        $this->requiredCapital = old('requiredCapital', $request->input('requiredCapital', ''));
-        $this->timeToMarket = old('timeToMarket', $request->input('timeToMarket', ''));
-        $this->technologyStack = old('technologyStack', $request->input('technologyStack', ''));
-        $this->geographicRelevance = old('geographicRelevance', $request->input('geographicRelevance', ''));
+        $this->subreddit = old('subreddit', $request->input('subreddit', ''));
+        $this->viability_score_min = old('viability_score_min', $request->input('viability_score_min'));
+        $this->viability_score_max = old('viability_score_max', $request->input('viability_score_max'));
         $this->sortBy = old('sortBy', $request->input('sortBy', 'popularity'));
         $this->sortDirection = old('sortDirection', $request->input('sortDirection', 'desc'));
 
@@ -67,13 +56,9 @@ class BusinessPlanSearch extends Component
 
         $searchParams = [
             'search' => $this->search,
-            'industry' => $this->industry,
-            'market_size' => $this->marketSize,
-            'sentiment' => $this->sentiment,
-            'required_capital' => $this->requiredCapital,
-            'time_to_market' => $this->timeToMarket,
-            'technology_stack' => $this->technologyStack,
-            'geographic_relevance' => $this->geographicRelevance,
+            'subreddit' => $this->subreddit,
+            'viability_score_min' => $this->viability_score_min,
+            'viability_score_max' => $this->viability_score_max,
             'sort' => $this->sortBy . '_' . $this->sortDirection,
             'from' => ($page - 1) * $perPage,
             'size' => $perPage,

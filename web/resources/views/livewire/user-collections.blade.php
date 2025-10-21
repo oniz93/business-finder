@@ -24,7 +24,7 @@
                     <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Business Plans:</h3>
                     @forelse ($collection->businessPlans as $plan)
                         <div class="flex items-center justify-between py-2 border-t border-gray-200 dark:border-gray-700">
-                            <a href="{{ route('business-plans.show', $plan->id) }}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300">{{ $plan->title }}</a>
+                            <a href="{{ route('business-plans.show', $plan->id) }}" wire:navigate class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300">{{ $plan->title }}</a>
                             {{-- Add actions like remove from collection if needed --}}
                         </div>
                     @empty

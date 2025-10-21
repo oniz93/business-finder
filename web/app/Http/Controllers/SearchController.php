@@ -13,19 +13,15 @@ class SearchController extends Controller
         // Validate request if needed
         $validated = $request->validate([
             'search' => 'nullable|string',
-            'industry' => 'nullable|string',
-            'marketSize' => 'nullable|string',
-            'sentiment' => 'nullable|string',
-            'requiredCapital' => 'nullable|string',
-            'timeToMarket' => 'nullable|string',
-            'technologyStack' => 'nullable|string',
-            'geographicRelevance' => 'nullable|string',
+            'subreddit' => 'nullable|string',
+            'viability_score_min' => 'nullable|numeric',
+            'viability_score_max' => 'nullable|numeric',
             'sortBy' => 'nullable|string',
-            'sortDirection' => 'nullable|string
-        ']);
+            'sortDirection' => 'nullable|string'
+        ]);
 
         // Redirect back to the GET route with input flashed to session
         // The Livewire component will pick up these old inputs.
-        return redirect()->route('business-plan-search.index')->withInput($request->except(['_token']));
+        return redirect()->route('business-plan-search.post')->withInput($request->except(['_token']));
     }
 }
