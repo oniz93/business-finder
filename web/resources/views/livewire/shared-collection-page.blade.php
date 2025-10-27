@@ -9,7 +9,7 @@
                     <h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Business Plans:</h2>
                     @forelse ($collection->businessPlans as $plan)
                         <div class="flex items-center justify-between py-2 border-t border-gray-200 dark:border-gray-700">
-                            <a href="{{ route('business-plans.show', $plan->id) }}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300">{{ $plan->title }}</a>
+                            <a href="{{ route('business-plans.show', $plan->id) }}" wire:navigate class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300">{{ $plan->title }}</a>
                         </div>
                     @empty
                         <p class="text-gray-600 dark:text-gray-400">No business plans in this collection yet.</p>

@@ -11,6 +11,16 @@
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
+        <script>
+            if (document.cookie.includes('theme=dark')) {
+                document.documentElement.classList.add('dark');
+            } else if (!document.cookie.includes('theme=') && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        </script>
+
         @livewireStyles
 
         <!-- Scripts -->

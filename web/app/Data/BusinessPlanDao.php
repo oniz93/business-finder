@@ -110,40 +110,39 @@ class BusinessPlanDao
             $boolQuery['must'][] = [
                             'query_string' => [
                                 'query' => $searchParams['search'],
-                                'fields' => ['*'], // Search across all fields
-                                'default_operator' => 'OR', // Default operator if not specified in query string
+                                'fields' => [
+                                    'title',
+                                    'summary',
+                                    'executive_summary',
+                                    'problem',
+                                    'solution',
+                                    'market_analysis',
+                                    'competition',
+                                    'marketing_strategy',
+                                    'viability_reasoning',
+                                    'call_to_action',
+                                ],
+                                'default_operator' => 'OR',
                             ],
 
             ];
         }
 
         $filters = [];
-        if (!empty($searchParams['industry'])) {
-            $filters[] = ['match' => ['industry' => $searchParams['industry']]];
+        if (!empty($searchParams['subreddit'])) {
+            $filters[] = ['match' => ['subreddit' => $searchParams['subreddit']]];
         }
 
-        if (!empty($searchParams['market_size'])) {
-            $filters[] = ['range' => ['market_size' => ['gte' => $searchParams['market_size']]]];
+        $viabilityRange = [];
+        if (!empty($searchParams['viability_score_min'])) {
+            $viabilityRange['gte'] = $searchParams['viability_score_min'];
+        }
+        if (!empty($searchParams['viability_score_max'])) {
+            $viabilityRange['lte'] = $searchParams['viability_score_max'];
         }
 
-        if (!empty($searchParams['sentiment'])) {
-            $filters[] = ['match' => ['sentiment' => $searchParams['sentiment']]];
-        }
-
-        if (!empty($searchParams['required_capital'])) {
-            $filters[] = ['range' => ['required_capital' => ['lte' => $searchParams['required_capital']]]];
-        }
-
-        if (!empty($searchParams['time_to_market'])) {
-            $filters[] = ['range' => ['time_to_market' => ['lte' => $searchParams['time_to_market']]]];
-        }
-
-        if (!empty($searchParams['technology_stack'])) {
-            $filters[] = ['match' => ['technology_stack' => $searchParams['technology_stack']]];
-        }
-
-        if (!empty($searchParams['geographic_relevance'])) {
-            $filters[] = ['match' => ['geographic_relevance' => $searchParams['geographic_relevance']]];
+        if (!empty($viabilityRange)) {
+            $filters[] = ['range' => ['viability_score' => $viabilityRange]];
         }
 
         if (!empty($filters)) {
