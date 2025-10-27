@@ -1,0 +1,91 @@
+
+
+networks:
+  business-finder-nw:
+    driver: bridge
+
+services:
+  # Nginx Service
+  nginx:
+    image: nginx:alpine
+    container_name: business-finder-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./web:/var/www/html
+      - ./docker/local/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./docker/local/nginx/certs:/etc/nginx/certs
+    depends_on:
+      - php
+      # - postgres
+      - redis
+      # - elasticsearch
+    networks:
+      - business-finder-nw
+
+  # PHP-FPM Service
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile.php.local
+    container_name: business-finder-php
+    volumes:
+      - ./web:/var/www/html
+    networks:
+      - business-finder-nw
+
+  # PostgreSQL Service
+  postgres:
+    image: postgres:17.6-alpine
+    container_name: business-finder-postgres
+    ports:
+      - "15432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    env_file:
+      - ./.env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teomiscia -d github_meta"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - business-finder-nw
+
+  # Elasticsearch Service
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: business-finder-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+    ports:
+      - "19200:9200"
+    volumes:
+      - ./data/es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - business-finder-nw
+
+  # Redis Service
+  redis:
+    image: redis:alpine
+    container_name: business-finder-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - business-finder-nw
