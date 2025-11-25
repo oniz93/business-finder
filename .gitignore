@@ -220,3 +220,5 @@ web2
 .specify
 web/@FEATURES.md
 **/.DS_Store
+docker/local/nginx/certs
+web/supervisord.pid

@@ -1,0 +1,45 @@
+FROM php:8.3-fpm-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    build-base \
+    libpq-dev \
+    postgresql-dev \
+    libzip-dev \
+    libpng-dev \
+    libjpeg-turbo-dev \
+    freetype-dev \
+    oniguruma-dev \
+    libxml2-dev \
+    supervisor
+
+# Install PHP extensions
+RUN docker-php-source extract
+RUN docker-php-ext-install bcmath
+RUN docker-php-ext-install ctype
+RUN docker-php-ext-install dom
+RUN docker-php-ext-install fileinfo
+RUN docker-php-ext-install gd
+RUN docker-php-ext-install mbstring
+RUN docker-php-ext-install opcache
+RUN docker-php-ext-install pdo
+RUN docker-php-ext-install pdo_pgsql
+
+RUN docker-php-ext-install xml
+RUN docker-php-ext-install zip
+RUN docker-php-source delete
+
+# Install redis extension
+RUN apk add --no-cache autoconf && pecl install redis && docker-php-ext-enable redis
+
+# Get latest Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Set working directory
+WORKDIR /var/www/html
+
+# Copy supervisor config
+COPY docker/local/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Run supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
