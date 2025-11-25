@@ -22,6 +22,18 @@
             <div class="hidden sm:flex sm:items-center sm:ms-6">
                 <!-- Theme Switcher -->
                 <div class="hidden sm:flex sm:items-center sm:ms-6">
+                    <form action="{{ route('business-plan-search.post') }}" method="POST" class="flex">
+                        @csrf
+                        <input type="text" name="search" placeholder="Search for business plans..." class="px-2 py-1 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100">
+                        <button type="submit" class="ml-2 px-3 py-1 bg-indigo-600 text-white rounded-md">Search</button>
+                    </form>
+                </div>
+                @endif
+                @endauth
+            </div>
+            <div class="hidden sm:flex sm:items-center sm:ms-6">
+                <!-- Theme Switcher -->
+                <div class="hidden sm:flex sm:items-center sm:ms-6">
                     <form action="{{ route('theme.switch') }}" method="POST" class="flex items-center">
                         @csrf
                         @if(request()->cookie('theme') === 'dark')
