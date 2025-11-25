@@ -13,6 +13,8 @@ const REDIS_TODO_QUEUE: &str = "nlp_todo_queue";
 
 // This should ideally come from a config file or env var
 const PROCESSED_DATA_DIR: &str = "/Volumes/2TBSSD/reddit/processed";
+const CHECKPOINT_DIR: &str = "/Volumes/2TBSSD/reddit/checkpoint";
+const CHECKPOINT_FILE: &str = "phase2_orchestrator.json";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct NlpJob {
@@ -21,9 +23,49 @@ struct NlpJob {
     text: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct FileCheckpoint {
+    path: PathBuf,
+    lines_processed: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct SubredditCheckpoint {
+    path: PathBuf,
+    files_queue: Vec<PathBuf>,
+    current_file: Option<FileCheckpoint>,
+    files_done: Vec<PathBuf>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+struct Checkpoint {
+    subreddits_queue: Vec<PathBuf>,
+    current_subreddit: Option<SubredditCheckpoint>,
+    subreddits_done: Vec<PathBuf>,
+}
+
+fn save_checkpoint(checkpoint: &Checkpoint) -> Result<()> {
+    std::fs::create_dir_all(CHECKPOINT_DIR).context("Failed to create checkpoint directory")?;
+    let path = PathBuf::from(CHECKPOINT_DIR).join(CHECKPOINT_FILE);
+    let f = std::fs::File::create(&path).context("Failed to create checkpoint file")?;
+    serde_json::to_writer_pretty(f, checkpoint).context("Failed to write checkpoint")?;
+    Ok(())
+}
+
+fn load_checkpoint() -> Result<Option<Checkpoint>> {
+    let path = PathBuf::from(CHECKPOINT_DIR).join(CHECKPOINT_FILE);
+    if path.exists() {
+        let f = std::fs::File::open(&path).context("Failed to open checkpoint file")?;
+        let checkpoint: Checkpoint = serde_json::from_reader(f).context("Failed to parse checkpoint")?;
+        Ok(Some(checkpoint))
+    } else {
+        Ok(None)
+    }
+}
+
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    info!("--- Starting Rust Phase 2 Orchestrator (Single Threaded) ---");
+    info!("--- Starting Rust Phase 2 Orchestrator (With Checkpoints) ---");
 
     let processed_data_path = PathBuf::from(PROCESSED_DATA_DIR);
     if !processed_data_path.exists() {
@@ -31,92 +73,149 @@ fn main() -> Result<()> {
         anyhow::bail!("Processed data directory not found.");
     }
 
-    // redis::Client is thread-safe and can be cloned.
     let redis_client = redis::Client::open(REDIS_URL)
         .context("Failed to create Redis client")?;
-
-    // Clear the queue once at the start.
-    {
-        let mut redis_conn = redis_client.get_connection()
-            .context("Failed to connect to Redis for queue cleanup")?;
-        let _: () = redis_conn.del(REDIS_TODO_QUEUE)
-            .context("Failed to clear Redis todo queue")?;
-        info!("Cleared existing jobs in Redis queue: {}", REDIS_TODO_QUEUE);
-    }
-
-    // Collect all subreddit directories from all suffix directories
-    info!("Scanning for subreddit directories in {:?}...", processed_data_path);
     
-    // First, get all suffix directories
-    let suffix_dirs: Vec<PathBuf> = std::fs::read_dir(&processed_data_path)
-        .context("Failed to read processed data directory")?
-        .filter_map(|entry| {
-            entry.ok().and_then(|e| {
-                if e.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-                    Some(e.path())
-                } else {
-                    None
-                }
-            })
-        })
-        .collect();
+    let mut redis_conn = redis_client.get_connection()
+        .context("Failed to get Redis connection")?;
 
-    // Now collect all subreddit directories from each suffix
-    let mut subreddits: Vec<PathBuf> = Vec::new();
-    for suffix_dir in suffix_dirs {
-        let subreddit_dirs = std::fs::read_dir(&suffix_dir)
-            .context(format!("Failed to read suffix directory: {:?}", suffix_dir))?
-            .filter_map(|entry| {
-                entry.ok().and_then(|e| {
-                    if e.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-                        Some(e.path())
-                    } else {
-                        None
-                    }
-                })
-            });
-        subreddits.extend(subreddit_dirs);
-    }
+    // Load or Initialize Checkpoint
+    let mut checkpoint = match load_checkpoint()? {
+        Some(cp) => {
+            info!("Found existing checkpoint. Resuming...");
+            cp
+        },
+        None => {
+            info!("No checkpoint found. Starting fresh.");
+            
+            // Clear the queue only if starting fresh
+            let _: () = redis_conn.del(REDIS_TODO_QUEUE)
+                .context("Failed to clear Redis todo queue")?;
+            info!("Cleared existing jobs in Redis queue: {}", REDIS_TODO_QUEUE);
 
-    // Sort by name
-    subreddits.sort();
+            // Scan for subreddits
+            info!("Scanning for subreddit directories in {:?}...", processed_data_path);
+            let suffix_dirs: Vec<PathBuf> = std::fs::read_dir(&processed_data_path)?
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.is_dir())
+                .collect();
 
-    let total_subreddits = subreddits.len();
-    info!("Found {} subreddit directories to process.", total_subreddits);
+            let mut subreddits: Vec<PathBuf> = Vec::new();
+            for suffix_dir in suffix_dirs {
+                let subreddit_dirs = std::fs::read_dir(&suffix_dir)?
+                    .filter_map(|e| e.ok().map(|e| e.path()))
+                    .filter(|p| p.is_dir());
+                subreddits.extend(subreddit_dirs);
+            }
+            subreddits.sort();
+            info!("Found {} subreddit directories.", subreddits.len());
 
-    if total_subreddits == 0 {
-        info!("No subreddit directories found. Exiting.");
-        return Ok(());
-    }
+            let cp = Checkpoint {
+                subreddits_queue: subreddits,
+                current_subreddit: None,
+                subreddits_done: Vec::new(),
+            };
+            save_checkpoint(&cp)?;
+            cp
+        }
+    };
 
-    let pb = ProgressBar::new(total_subreddits as u64);
+    // Progress bar setup (rough estimation based on subreddits)
+    let total_subs = checkpoint.subreddits_queue.len() + checkpoint.subreddits_done.len() + if checkpoint.current_subreddit.is_some() { 1 } else { 0 };
+    let pb = ProgressBar::new(total_subs as u64);
     pb.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}")
         .unwrap()
         .progress_chars("#>-"));
+    pb.set_position(checkpoint.subreddits_done.len() as u64);
 
-    let mut redis_conn = redis_client.get_connection()
-        .context("Failed to get Redis connection")?;
-
-    for subreddit_path in subreddits {
-        let subreddit_name = subreddit_path.file_name().unwrap_or_default().to_string_lossy();
-        pb.set_message(format!("Processing r/{}", subreddit_name));
-        
-        // Find parquet files in this subreddit directory
-        let parquet_files: Vec<PathBuf> = WalkDir::new(&subreddit_path)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file() && e.path().extension().map_or(false, |ext| ext == "parquet"))
-            .map(|e| e.path().to_path_buf())
-            .collect();
-
-        for file_path in parquet_files {
-             if let Err(e) = process_parquet_file(&file_path, &mut redis_conn) {
-                pb.println(format!("Error processing file {:?}: {}", file_path, e));
+    loop {
+        // 1. Check if we need to pick a new subreddit
+        if checkpoint.current_subreddit.is_none() {
+            if checkpoint.subreddits_queue.is_empty() {
+                break; // All done
             }
+            let next_sub = checkpoint.subreddits_queue.remove(0);
+            
+            // Scan files for this subreddit
+            let parquet_files: Vec<PathBuf> = WalkDir::new(&next_sub)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file() && e.path().extension().map_or(false, |ext| ext == "parquet"))
+                .map(|e| e.path().to_path_buf())
+                .collect();
+            
+            let mut sorted_files = parquet_files;
+            sorted_files.sort();
+
+            checkpoint.current_subreddit = Some(SubredditCheckpoint {
+                path: next_sub,
+                files_queue: sorted_files,
+                current_file: None,
+                files_done: Vec::new(),
+            });
+            save_checkpoint(&checkpoint)?;
         }
+
+        // 2. Check if we need to pick a new file in the current subreddit
+        let sub_finished = {
+            let sub = checkpoint.current_subreddit.as_ref().unwrap();
+            sub.current_file.is_none() && sub.files_queue.is_empty()
+        };
+
+        if sub_finished {
+            let sub = checkpoint.current_subreddit.take().unwrap();
+            checkpoint.subreddits_done.push(sub.path);
+            pb.inc(1);
+            save_checkpoint(&checkpoint)?;
+            continue;
+        }
+
+        // 3. Pick next file if needed
+        let need_next_file = checkpoint.current_subreddit.as_ref().unwrap().current_file.is_none();
+        if need_next_file {
+            let sub = checkpoint.current_subreddit.as_mut().unwrap();
+            let next_file = sub.files_queue.remove(0);
+            sub.current_file = Some(FileCheckpoint { path: next_file, lines_processed: 0 });
+            save_checkpoint(&checkpoint)?;
+        }
+
+        // 4. Process the current file
+        let (file_path, start_offset) = {
+            let sub = checkpoint.current_subreddit.as_ref().unwrap();
+            let file = sub.current_file.as_ref().unwrap();
+            (file.path.clone(), file.lines_processed)
+        };
         
-        pb.inc(1);
+        let sub_name = checkpoint.current_subreddit.as_ref().unwrap().path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        pb.set_message(format!("Processing r/{} - {:?}", sub_name, file_path.file_name().unwrap_or_default()));
+
+        let result = process_parquet_file(
+            &file_path,
+            &mut redis_conn,
+            start_offset,
+            |new_lines| {
+                let sub = checkpoint.current_subreddit.as_mut().unwrap();
+                let file = sub.current_file.as_mut().unwrap();
+                file.lines_processed = new_lines;
+                save_checkpoint(&checkpoint)
+            }
+        );
+
+        if let Err(e) = result {
+            pb.println(format!("Error processing file {:?}: {}", file_path, e));
+            // We return error here to stop the pipeline so user can investigate.
+            // Checkpoint is saved at last successful chunk.
+            return Err(e);
+        }
+
+        // 5. Mark file as done
+        {
+            let sub = checkpoint.current_subreddit.as_mut().unwrap();
+            let file = sub.current_file.take().unwrap();
+            sub.files_done.push(file.path);
+            save_checkpoint(&checkpoint)?;
+        }
     }
 
     pb.finish_with_message("All subreddits processed");
@@ -124,9 +223,14 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn process_parquet_file(file_path: &PathBuf, redis_conn: &mut redis::Connection) -> Result<()> {
-    // This log can be very noisy, so it's commented out. Enable for deep debugging.
-    // info!("Processing parquet file: {:?}", file_path);
+fn process_parquet_file<F>(
+    file_path: &PathBuf, 
+    redis_conn: &mut redis::Connection, 
+    start_offset: usize,
+    mut on_progress: F
+) -> Result<()> 
+where F: FnMut(usize) -> Result<()>
+{
     let file = std::fs::File::open(file_path)
         .context(format!("Failed to open file: {:?}", file_path))?;
         
@@ -146,15 +250,17 @@ fn process_parquet_file(file_path: &PathBuf, redis_conn: &mut redis::Connection)
         .context("Failed to filter DataFrame")?;
 
     let total_rows = filtered_df.height();
-    if total_rows == 0 {
-        // info!("No NLP jobs needed for file: {:?}", file_path);
+    if total_rows == 0 || start_offset >= total_rows {
         return Ok(());
     }
 
     let chunk_size = 10_000;
     let file_path_str = file_path.to_str().context("Invalid file path string")?.to_string();
 
-    for offset in (0..total_rows).step_by(chunk_size) {
+    // Start loop from start_offset
+    // We align start_offset to chunk boundaries if needed, or just process.
+    // The logic below handles arbitrary start_offset.
+    for offset in (start_offset..total_rows).step_by(chunk_size) {
         // Backpressure: Pause if queue is too large
         loop {
             let queue_len: u64 = redis_conn.llen(REDIS_TODO_QUEUE)
@@ -163,18 +269,14 @@ fn process_parquet_file(file_path: &PathBuf, redis_conn: &mut redis::Connection)
             if queue_len <= 50_000 {
                 break;
             }
-            
-            // Log occasionally or just sleep. 
-            // Using a simple sleep here. 
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
 
         let current_batch_size = std::cmp::min(chunk_size, total_rows - offset);
         let chunk = filtered_df.slice(offset as i64, current_batch_size);
 
-        // Use a pipeline for efficiency
         let mut pipe = redis::pipe();
-        pipe.atomic(); // Ensure all commands in the pipeline are executed together
+        pipe.atomic(); 
 
         let body_series = chunk.column("body")?.str()?;
         let id_series = chunk.column("id")?.str()?; 
@@ -194,8 +296,10 @@ fn process_parquet_file(file_path: &PathBuf, redis_conn: &mut redis::Connection)
 
         pipe.query::<()>(redis_conn)
             .context(format!("Failed to push batch of {} jobs to Redis for file {:?}", current_batch_size, file_path))?;
+        
+        // Update progress
+        on_progress(offset + current_batch_size)?;
     }
 
-    // info!("Pushed {} NLP jobs from file {:?} to Redis.", filtered_df.height(), file_path);
     Ok(())
 }
