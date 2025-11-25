@@ -1,0 +1,29 @@
+[package]
+name = "phase1_ingestor"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rayon = "1.11.0"
+polars = { version = "0.37.0", features = ["lazy", "json", "parquet", "dtype-datetime", "regex", "diagonal_concat", "strings", "polars-ops", "ipc"] }
+polars-core = "0.37.0"
+zstd = "0.13.0"
+walkdir = "2.4.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+log = "0.4"
+env_logger = "0.11.8"
+chrono = "0.4.31"
+itertools = "0.14.0"
+uuid = { version = "1.8.0", features = ["v4"] }
+dashmap = { version = "5.5.3", features = ["serde"] }
+indicatif = { version = "0.17.8", features = ["rayon"] }
+crossbeam-channel = "0.5" # Added for semaphore
+scopeguard = "1.1"
+clap = { version = "4.5.52", features = ["derive"] }
+duckdb = { version = "1.4.2", features = ["bundled"] }
+glob = "0.3.3"
+rand = "0.9.2"

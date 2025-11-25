@@ -1,0 +1,8 @@
+[package]
+name = "minimal_polars_test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+polars = { version = "0.37.0", features = ["lazy", "json", "parquet", "dtype-datetime", "regex", "diagonal_concat", "strings", "polars-ops"] }
+polars-core = "0.37.0"

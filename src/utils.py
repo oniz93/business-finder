@@ -1,54 +1,84 @@
 import os
+import glob
+from typing import List, Dict
+import config
+import re
 import time
-from typing import BinaryIO
+import errno
 
+class DirectoryLock:
+    """
+    A simple file-based lock for a directory to prevent race conditions
+    in a multiprocessing environment.
+    """
+    def __init__(self, dir_path, timeout=60):
+        self.lock_file = os.path.join(dir_path, ".lock")
+        self.dir_path = dir_path
+        self.timeout = timeout
+        self.fd = None
 
-class FileProgressLog:
-	file: BinaryIO
-	fileSize: int
-	i: int
-	startTime: float
-	printEvery: int
-	maxLineLength: int
+    def acquire(self):
+        start_time = time.time()
+        while True:
+            try:
+                os.makedirs(self.dir_path, exist_ok=True)
+                self.fd = os.open(self.lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                break
+            except OSError as e:
+                if e.errno != errno.EEXIST:
+                    raise
+                if time.time() - start_time >= self.timeout:
+                    raise TimeoutError(f"Could not acquire lock for {self.dir_path} within {self.timeout}s")
+                time.sleep(0.5)
 
-	def __init__(self, path: str, file: BinaryIO):
-		self.file = file
-		self.fileSize = os.path.getsize(path)
-		self.i = 0
-		self.startTime = time.time()
-		self.printEvery = 10_000
-		self.maxLineLength = 0
-	
-	def onRow(self):
-		self.i += 1
-		if self.i % self.printEvery == 0 and self.i > 0:
-			self.logProgress()
-		
-	def logProgress(self, end=""):
-		progress = self.file.tell() / self.fileSize if not self.file.closed else 1
-		elapsed = time.time() - self.startTime
-		remaining = (elapsed / progress - elapsed) if progress > 0 else 0
-		timePerRow = elapsed / self.i
-		printStr = f"{self.i:,} - {progress:.2%} - elapsed: {formatTime(elapsed)} - remaining: {formatTime(remaining)} - {formatTime(timePerRow)}/row"
-		self.maxLineLength = max(self.maxLineLength, len(printStr))
-		printStr = printStr.ljust(self.maxLineLength)
-		print(f"\r{printStr}", end=end)
+    def release(self):
+        if self.fd is not None:
+            os.close(self.fd)
+            os.remove(self.lock_file)
+            self.fd = None
 
-		if timePerRow < 20/1000/1000:
-			self.printEvery = 20_000
-		elif timePerRow < 50/1000/1000:
-			self.printEvery = 10_000
-		else:
-			self.printEvery = 5_000
+    def __enter__(self):
+        self.acquire()
+        return self
 
-def formatTime(seconds: float) -> str:
-	if seconds == 0:
-		return "0s"
-	if seconds < 0.001:
-		return f"{seconds * 1_000_000:.1f}µs"
-	if seconds < 1:
-		return f"{seconds * 1_000:.2f}ms"
-	elapsedHr = int(seconds // 3600)
-	elapsedMin = int((seconds % 3600) // 60)
-	elapsedSec = int(seconds % 60)
-	return f"{elapsedHr:02}:{elapsedMin:02}:{elapsedSec:02}"
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
+
+def sanitize_for_filesystem(text: str) -> str:
+    """
+    Sanitizes a string to be filesystem-compatible by keeping only
+    alphanumeric characters, hyphens, and underscores.
+    """
+    if not text:
+        return "_"
+    return re.sub(r'[^A-Za-z0-9\-_]', '', text).lower()
+
+def discover_files() -> List[Dict[str, str]]:
+    """
+    Dynamically finds all .zst and .jsonl files in the raw data directory.
+    Returns a list of dictionaries, each containing the file path and its type.
+    """
+    all_files = []
+    
+    # Scan for .zst files (assumed to be comments or submissions)
+    for zst_file in glob.glob(os.path.join(config.RAW_DATA_DIR, "**", "*.zst"), recursive=True):
+        filename = os.path.basename(zst_file)
+        if filename.startswith("RS"):
+            item_type = "submission"
+        elif filename.startswith("RC"):
+            item_type = "comment"
+        else:
+            item_type = "unknown"
+        all_files.append({"path": zst_file, "type": item_type})
+
+    # Scan for .jsonl files
+    for jsonl_file in glob.glob(os.path.join(config.RAW_DATA_DIR, "**", "*.jsonl"), recursive=True):
+        # Simple assumption, could be refined if needed
+        if "submission" in jsonl_file.lower():
+             item_type = "submission"
+        else:
+            item_type = "comment"
+        all_files.append({"path": jsonl_file, "type": item_type})
+        
+    print(f"Discovered {len(all_files)} files to process in {config.RAW_DATA_DIR}")
+    return all_files

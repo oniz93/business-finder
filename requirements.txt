@@ -15,7 +15,11 @@ aiohttp
 fastapi
 uvicorn
 accelerate
-hdbscan
+optimum[onnxruntime]
 joblib
 pyspark
 psycopg2-binary
+polars
+pyarrow
+rich
+redis
