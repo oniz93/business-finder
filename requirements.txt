@@ -23,3 +23,4 @@ polars
 pyarrow
 rich
 redis
+tabulate

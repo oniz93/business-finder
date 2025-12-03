@@ -6,9 +6,11 @@ use std::collections::HashMap;
 use redis::Commands;
 
 // Configuration
-const REDIS_URL: &str = "rediss://:zBORiqFgabxlB7VMDjXvNWC2VAP9JPDWqAzCaLXjUNk%3D@businessfinder.redis.cache.windows.net:6380/0";
+const REDIS_URL: &str = "redis://:kRoGWJXNK75zMIcJz4RDDhNhz1hfKq6OLAzCaCFPVIw%3D@businessfinder.canadacentral.redis.azure.net:10000/0";
+//const REDIS_URL: &str = "redis://localhost:6379/0";
+
 const REDIS_RESULTS_QUEUE: &str = "nlp_results_queue";
-const BATCH_SIZE: usize = 10; // Number of results to accumulate before writing
+const BATCH_SIZE: usize = 10000; // Number of results to accumulate before writing
 const BATCH_TIMEOUT_SECS: usize = 3600; // Max time to wait for a full batch (1 hour)
 
 #[derive(Debug, Deserialize, Clone)]
@@ -29,48 +31,70 @@ fn main() -> Result<()> {
     let mut results_batch: HashMap<String, Vec<NlpResult>> = HashMap::new();
     let mut total_processed_in_batch = 0;
 
-    loop {
-        // Blocking pop from the results queue with a timeout.
-        // blpop returns a tuple: (queue_name, value)
-        let redis_result: Option<(String, String)> = redis_conn.blpop(REDIS_RESULTS_QUEUE, BATCH_TIMEOUT_SECS as f64)?;
+    loop {        
+        // Non-blocking batch pop
+        let batch_size_nz = std::num::NonZeroUsize::new(BATCH_SIZE);
+        let messages: Vec<String> = redis_conn.lpop(REDIS_RESULTS_QUEUE, batch_size_nz)?;
+        
+        let messages_fetched = messages.len();
 
-        match redis_result {
-            Some((_queue_name, result_json)) => {
-                let result: NlpResult = match serde_json::from_str(&result_json) {
-                    Ok(res) => res,
-                    Err(e) => {
-                        error!("Failed to deserialize NLP result from Redis: {}. Payload: {}", e, result_json);
-                        continue; // Skip this malformed entry
+        for json in messages {
+            let result: NlpResult = match serde_json::from_str(&json) {
+                Ok(res) => res,
+                Err(e) => {
+                    error!("Failed to deserialize NLP result from Redis: {}. Payload: {}", e, json);
+                    continue; 
+                }
+            };
+            
+            results_batch.entry(result.file_path.clone()).or_default().push(result);
+            total_processed_in_batch += 1;
+        }
+        
+        if messages_fetched > 0 {
+            info!("Fetched {} messages from Redis queue", messages_fetched);
+        }
+
+        // If we got no messages, use blocking pop to wait for new ones
+        if messages_fetched == 0 {
+            let redis_result: Option<(String, String)> = redis_conn.blpop(REDIS_RESULTS_QUEUE, BATCH_TIMEOUT_SECS as f64)?;
+            
+            match redis_result {
+                Some((_queue_name, result_json)) => {
+                    let result: NlpResult = match serde_json::from_str(&result_json) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            error!("Failed to deserialize NLP result from Redis: {}. Payload: {}", e, result_json);
+                            continue; // Skip this malformed entry
+                        }
+                    };
+                    
+                    results_batch.entry(result.file_path.clone()).or_default().push(result);
+                    total_processed_in_batch += 1;
+                }
+                None => {
+                    // Timeout occurred
+                    if !results_batch.is_empty() {
+                        info!("Redis queue timed out, writing remaining {} results...", total_processed_in_batch);
+                        if let Err(e) = write_batches(&mut results_batch) {
+                            error!("Failed during final batch write: {}", e);
+                        }
+                        total_processed_in_batch = 0;
+                    } else {
+                        info!("Redis results queue has been empty for {} seconds. Shutting down.", BATCH_TIMEOUT_SECS);
+                        break; // Exit the loop
                     }
-                };
-                
-                // Log that we received a result
-                info!("Writer received result for row_id: {}", result.row_id);
-
-                results_batch.entry(result.file_path.clone()).or_default().push(result);
-                total_processed_in_batch += 1;
-
-                if total_processed_in_batch >= BATCH_SIZE {
-                    info!("Batch size of {} reached. Writing to files...", BATCH_SIZE);
-                    if let Err(e) = write_batches(&mut results_batch) {
-                        error!("Failed during batch write: {}", e);
-                    }
-                    total_processed_in_batch = 0; // Reset counter
                 }
             }
-            None => {
-                // Timeout occurred
-                if !results_batch.is_empty() {
-                    info!("Redis queue timed out, writing remaining {} results...", total_processed_in_batch);
-                    if let Err(e) = write_batches(&mut results_batch) {
-                        error!("Failed during final batch write: {}", e);
-                    }
-                    total_processed_in_batch = 0;
-                } else {
-                    info!("Redis results queue has been empty for {} seconds. Shutting down.", BATCH_TIMEOUT_SECS);
-                    break; // Exit the loop
-                }
+        }
+
+        // Check if we should write the batch
+        if total_processed_in_batch >= BATCH_SIZE {
+            info!("Batch size of {} reached. Writing to files...", BATCH_SIZE);
+            if let Err(e) = write_batches(&mut results_batch) {
+                error!("Failed during batch write: {}", e);
             }
+            total_processed_in_batch = 0; // Reset counter
         }
     }
 
@@ -102,10 +126,14 @@ fn write_single_file_update(file_path: &str, results: &[NlpResult]) -> Result<()
         "new_nlp_score" => &scores
     )?;
 
-    // 2. Read the original Parquet file
-    let original_df = ParquetReader::new(std::fs::File::open(file_path)?)
-        .finish()
-        .context(format!("Failed to read original parquet file: {}", file_path))?;
+    // 2. Read the original Parquet file (open and close immediately)
+    let original_df = {
+        let file = std::fs::File::open(file_path)
+            .context(format!("Failed to open original parquet file: {}", file_path))?;
+        ParquetReader::new(file)
+            .finish()
+            .context(format!("Failed to read original parquet file: {}", file_path))?
+    }; // File handle is dropped here, releasing any locks
 
     // 3. Join the results
     let joined_df = original_df.lazy()
@@ -132,12 +160,20 @@ fn write_single_file_update(file_path: &str, results: &[NlpResult]) -> Result<()
         ])
         .collect()?;
 
-    // 5. Write the updated DataFrame back, overwriting the original file
-    let mut file = std::fs::File::create(file_path)?;
-    ParquetWriter::new(&mut file)
-        .with_compression(ParquetCompression::Zstd(None))
-        .finish(&mut final_df.clone())
-        .context(format!("Failed to write updated parquet file: {}", file_path))?;
+    // 5. Write to a temporary file first (atomic operation)
+    let temp_path = format!("{}.tmp.{}", file_path, std::process::id());
+    {
+        let mut temp_file = std::fs::File::create(&temp_path)
+            .context(format!("Failed to create temporary file: {}", temp_path))?;
+        ParquetWriter::new(&mut temp_file)
+            .with_compression(ParquetCompression::Zstd(None))
+            .finish(&mut final_df.clone())
+            .context(format!("Failed to write to temporary parquet file: {}", temp_path))?;
+    } // temp_file is closed here
+
+    // 6. Atomically replace the original file with the temp file
+    std::fs::rename(&temp_path, file_path)
+        .context(format!("Failed to replace original file {} with updated version", file_path))?;
 
     info!("Successfully updated file: {}", file_path);
     Ok(())

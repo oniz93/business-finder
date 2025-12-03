@@ -9,15 +9,18 @@ import time
 import math
 
 # Configuration
-REDIS_URL = os.getenv("REDIS_URL", "rediss://:zBORiqFgabxlB7VMDjXvNWC2VAP9JPDWqAzCaLXjUNk%3D@businessfinder.redis.cache.windows.net:6380/0")
+# REDIS_URL = os.getenv("REDIS_URL", "rediss://:zBORiqFgabxlB7VMDjXvNWC2VAP9JPDWqAzCaLXjUNk%3D@businessfinder.redis.cache.windows.net:6380/0")
+REDIS_URL = os.getenv("REDIS_URL", "rediss://:kRoGWJXNK75zMIcJz4RDDhNhz1hfKq6OLAzCaCFPVIw%3D@businessfinder.canadacentral.redis.azure.net:10000/0")
 REDIS_TODO_QUEUE = "nlp_todo_queue"
 REDIS_RESULTS_QUEUE = "nlp_results_queue"
 # NOTE: For large models on a local machine, it's crucial to limit the number of
 # workers to avoid memory overload. Start with 1 and increase carefully if you have ample RAM.
 NUM_CONSUMERS = int(os.getenv("NUM_CONSUMERS", "1"))
 # Comma-separated list of devices to use (e.g., "mps,cpu"). Overrides NUM_CONSUMERS if set.
-CONSUMER_DEVICES = os.getenv("CONSUMER_DEVICES", "mps")
+#CONSUMER_DEVICES = os.getenv("CONSUMER_DEVICES", "mps,mps,mps,mps,mps,mps,mps,mps")
+CONSUMER_DEVICES = os.getenv("CONSUMER_DEVICES", "cpu")
 REPORT_BATCH_SIZE = int(os.getenv("REPORT_BATCH_SIZE", "50"))
+CONSUMER_BATCH_SIZE = int(os.getenv("CONSUMER_BATCH_SIZE", "1000"))
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s - %(message)s')
@@ -69,7 +72,7 @@ def get_classifier(device_override=None):
             # Fallback to CPU
             logging.info(f"Initializing classifier on CPU.")
 
-    model_name = "tasksource/deberta-small-long-nli"
+    model_name = "MoritzLaurer/xtremedistil-l6-h256-zeroshot-v1.1-all-33"
     
     # Check if we should use ONNX Runtime
     # We skip ONNX for MPS to prefer native PyTorch MPS backend which is often more reliable/visible
@@ -142,55 +145,76 @@ def consumer_worker(worker_id, device_type=None):
         try:
             # Backpressure: Check if results queue is too full
             # If the writer is slow, we don't want to keep pushing results and OOM Redis.
-            if r.llen(REDIS_RESULTS_QUEUE) > 10000:
+            if r.llen(REDIS_RESULTS_QUEUE) > 50000:
                 logging.warning(f"Worker {worker_id}: Results queue is full (>10k). Pausing for 5s...")
                 time.sleep(5)
                 continue
 
-            # Blocking pop from the todo queue
-            # Use a longer timeout to avoid premature exits if orchestrator is slow
-            _, job_json = r.blpop(REDIS_TODO_QUEUE, timeout=60) 
-            if job_json is None:
-                logging.info(f"Consumer worker {worker_id} timed out waiting for jobs. Exiting.")
-                break # Exit if no jobs for a while
+            # Batch retrieval
+            # Try to get a batch first
+            jobs_json = r.lpop(REDIS_TODO_QUEUE, CONSUMER_BATCH_SIZE)
             
-            job = json.loads(job_json)
-            file_path = job['file_path']
-            row_id = job['row_id']
-            text = job['text']
+            # If nothing returned, wait for at least one item
+            if not jobs_json:
+                result = r.blpop(REDIS_TODO_QUEUE, timeout=60)
+                if result:
+                    _, job_data = result
+                    jobs_json = [job_data]
+                else:
+                    logging.info(f"Consumer worker {worker_id} timed out waiting for jobs. Exiting.")
+                    break # Exit if no jobs for a while
 
-            #logging.info(f"Worker {worker_id} processing job for file: {file_path}, row_id: {row_id}")
-
-            # Run NLP classification
-            # Always pass a list to the classifier to ensure it returns a list of results.
-            results = classifier([text], candidate_labels=candidate_labels, truncation=True, max_length=512)
-
-            # If the input text was empty or invalid, the classifier might return an empty list.
-            if not results:
-                logging.warning(f"NLP classifier returned no results for row_id: {row_id}. Text may have been empty or invalid.")
+            # Parse jobs
+            valid_jobs = []
+            texts = []
+            
+            for job_bytes in jobs_json:
+                try:
+                    job = json.loads(job_bytes)
+                    # Basic validation
+                    if 'text' in job and job['text']:
+                        valid_jobs.append(job)
+                        texts.append(job['text'])
+                    else:
+                         logging.warning(f"Skipping invalid job (missing text): {job.get('row_id', 'unknown')}")
+                except Exception as e:
+                    logging.error(f"Failed to parse job json: {e}")
+                    continue
+            
+            if not valid_jobs:
                 continue
 
-            result = results[0] # Now this is safe because we checked for an empty list
+            # Run NLP classification in batch
+            try:
+                # We pass the list of texts. batch_size in pipeline can be set, but we already controlled the size.
+                results = classifier(texts, candidate_labels=candidate_labels, truncation=True, max_length=512)
+            except Exception as e:
+                logging.error(f"Classifier failed on batch of size {len(texts)}: {e}")
+                continue
 
-            score = float(result['scores'][0])
-            # The JSON standard does not support NaN values. If the model outputs NaN,
-            # we replace it with 0.0 to ensure the payload is valid JSON.
-            if math.isnan(score):
-                logging.warning(f"Classifier returned NaN score for row_id: {row_id}. Replacing with 0.0.")
-                score = 0.0
+            pipeline_results = []
+            for job, result in zip(valid_jobs, results):
+                if not result:
+                    continue
+                    
+                score = float(result['scores'][0])
+                if math.isnan(score):
+                    score = 0.0
 
-            nlp_result = {
-                "file_path": file_path,
-                "row_id": row_id,
-                "nlp_label": result['labels'][0],
-                "nlp_score": score,
-            }
+                nlp_result = {
+                    "file_path": job['file_path'],
+                    "row_id": job['row_id'],
+                    "nlp_label": result['labels'][0],
+                    "nlp_score": score,
+                }
+                pipeline_results.append(json.dumps(nlp_result))
             
-            r.rpush(REDIS_RESULTS_QUEUE, json.dumps(nlp_result))
-            logging.debug(f"Worker {worker_id} finished job for file: {file_path}, row_id: {row_id}. Pushed result.")
+            if pipeline_results:
+                r.rpush(REDIS_RESULTS_QUEUE, *pipeline_results)
+                logging.debug(f"Worker {worker_id} pushed {len(pipeline_results)} results.")
 
             # Benchmark reporting
-            batch_count += 1
+            batch_count += len(pipeline_results)
             if batch_count >= REPORT_BATCH_SIZE:
                 elapsed = time.time() - batch_start_time
                 logging.info(f"Worker {worker_id} ({device_type if device_type else 'Auto'}): Processed {batch_count} messages in {elapsed:.2f}s ({(batch_count / elapsed):.2f} msg/s)")
