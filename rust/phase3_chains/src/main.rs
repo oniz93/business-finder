@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
+use clap::Parser;
+use duckdb::{Connection, params};
 use log::{info, warn, error};
-use polars::prelude::*;
 use walkdir::WalkDir;
 use std::path::PathBuf;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Serialize, Deserialize};
 
@@ -12,49 +13,25 @@ const PROCESSED_DATA_DIR: &str = "/Volumes/2TBSSD/reddit/processed";
 const CHAINS_OUTPUT_DIR: &str = "/Volumes/2TBSSD/reddit/chains";
 const CHECKPOINT_DIR: &str = "/Users/teomiscia/web/business-finder/rust/checkpoint";
 const CHECKPOINT_FILE: &str = "phase3_progress.json";
+const SUBREDDITS_LIST_FILE: &str = "subreddits_list.json";
+const CHUNK_SIZE: usize = 10_000;
 
-// List of subreddit prefixes to process (same as in phase2_orchestrator)
-const SUBREDDIT_PREFIXES: &[&str] = &[
-    "01", "02", "03", "04", "05", "06", "07", "08", "09", "0a",
-    "0b", "0c", "0d", "0e", "0f", "10", "11", "12", "13", "14",
-    "15", "16", "17", "18", "19", "1a", "1b", "1c", "1d", "1e",
-    "1f", "20", "21", "22", "23", "24", "25", "26", "27", "28",
-    "29", "2a", "2b", "2c", "2d", "2e", "2f", "30", "31", "32",
-    "33", "34", "35", "36", "37", "38", "39", "3a", "3b", "3c",
-    "3d", "3e", "3f", "40", "41", "42", "43", "44", "45", "46",
-    "47", "48", "49", "4a", "4b", "4c", "4d", "4e", "4f", "50",
-    "51", "52", "53", "54", "55", "56", "57", "58", "59", "5a",
-    "5b", "5c", "5d", "5e", "5f", "60", "61", "62", "63", "64",
-    "65", "66", "67", "68", "69", "6a", "6b", "6c", "6d", "6e",
-    "6f", "70", "71", "72", "73", "74", "75", "76", "77", "78",
-    "79", "7a", "7b", "7c", "7d", "7e", "7f", "80", "81", "82",
-    "83", "84", "85", "86", "87", "88", "89", "8a", "8b", "8c",
-    "8d", "8e", "8f", "90", "91", "92", "93", "94", "95", "96",
-    "97", "98", "99", "9a", "9b", "9c", "9d", "9e", "9f", "a0",
-    "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "aa",
-    "ab", "ac", "ad", "ae", "af", "b0", "b1", "b2", "b3", "b4",
-    "b5", "b6", "b7", "b8", "b9", "ba", "bb", "bc", "bd", "be",
-    "bf", "c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8",
-    "c9", "ca", "cb", "cc", "cd", "ce", "cf", "d0", "d1", "d2",
-    "d3", "d4", "d5", "d6", "d7", "d8", "d9", "da", "db", "dc",
-    "dd", "de", "df", "e0", "e1", "e2", "e3", "e4", "e5", "e6",
-    "e7", "e8", "e9", "ea", "eb", "ec", "ed", "ee", "ef", "f0",
-    "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "fa",
-    "fb", "fc", "fd", "fe", "ff",
-];
-
-#[derive(Debug, Clone)]
-struct MessageNode {
-    id: String,
-    parent_id: Option<String>,
-    link_id: Option<String>,
-    body: String,
-    // Store full row for later output
-    row_index: usize,
+#[derive(Parser, Debug)]
+#[command(name = "phase3_chains")]
+#[command(about = "Build complete conversation chains from ideas", long_about = None)]
+struct Args {
+    /// Process only a specific subreddit (e.g., "AskReddit")
+    /// When specified, will process only this subreddit and skip checkpoint/scanning
+    #[arg(long)]
+    subreddit: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+struct Progress {
     subreddit_index: usize,
 }
+
+
 
 fn save_progress(progress: &Progress) -> Result<()> {
     std::fs::create_dir_all(CHECKPOINT_DIR).context("Failed to create checkpoint directory")?;
@@ -75,8 +52,31 @@ fn load_progress() -> Result<Progress> {
     }
 }
 
+fn save_subreddits_list(subreddits: &[PathBuf]) -> Result<()> {
+    std::fs::create_dir_all(CHECKPOINT_DIR).context("Failed to create checkpoint directory")?;
+    let path = PathBuf::from(CHECKPOINT_DIR).join(SUBREDDITS_LIST_FILE);
+    let f = std::fs::File::create(&path).context("Failed to create subreddits list file")?;
+    serde_json::to_writer_pretty(f, subreddits).context("Failed to write subreddits list")?;
+    Ok(())
+}
+
+fn load_subreddits_list() -> Result<Option<Vec<PathBuf>>> {
+    let path = PathBuf::from(CHECKPOINT_DIR).join(SUBREDDITS_LIST_FILE);
+    if path.exists() {
+        info!("✓ Found cached subreddits list at {:?}", path);
+        let f = std::fs::File::open(&path).context("Failed to open subreddits list file")?;
+        let subreddits: Vec<PathBuf> = serde_json::from_reader(f)
+            .context("Failed to parse subreddits list")?;
+        Ok(Some(subreddits))
+    } else {
+        Ok(None)
+    }
+}
+
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    
+    let args = Args::parse();
     
     info!("╔══════════════════════════════════════════════════════════╗");
     info!("║   Phase 3: Building Message Chains from Ideas           ║");
@@ -92,10 +92,40 @@ fn main() -> Result<()> {
     std::fs::create_dir_all(CHAINS_OUTPUT_DIR)
         .context("Failed to create chains output directory")?;
 
-    // Scan for all subreddit directories
-    info!("📂 Scanning for subreddit directories...");
-    let subreddits = scan_subreddits(&processed_data_path)?;
-    info!("✓ Found {} subreddit directories", subreddits.len());
+    // Handle single subreddit mode
+    if let Some(subreddit_name) = args.subreddit {
+        info!("🎯 Single subreddit mode: {}", subreddit_name);
+        
+        // Find the subreddit path
+        let subreddit_path = find_subreddit_path(&processed_data_path, &subreddit_name)?;
+        
+        info!("Found subreddit at: {:?}", subreddit_path);
+        
+        // Process this single subreddit
+        process_subreddit(&subreddit_path)?;
+        
+        info!("╔══════════════════════════════════════════════════════════╗");
+        info!("║   Phase 3: Complete (Single Subreddit)!                 ║");
+        info!("╚══════════════════════════════════════════════════════════╝");
+        
+        return Ok(());
+    }
+
+    // Scan for all subreddit directories or load from cache
+    let subreddits = if let Some(cached_list) = load_subreddits_list()? {
+        info!("✓ Using cached list of {} subreddits", cached_list.len());
+        cached_list
+    } else {
+        info!("📂 Scanning for subreddit directories...");
+        let list = scan_subreddits(&processed_data_path)?;
+        info!("✓ Found {} subreddit directories", list.len());
+        
+        // Save the list for future runs
+        save_subreddits_list(&list)?;
+        info!("✓ Saved subreddits list to checkpoint");
+        
+        list
+    };
 
     // Load progress
     let mut progress = load_progress()?;
@@ -123,7 +153,15 @@ fn main() -> Result<()> {
 
         let subreddit_path = &subreddits[i];
         
-        match process_subreddit(subreddit_path, &main_pb) {
+        let subreddit_name = subreddit_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        
+        main_pb.set_message(format!("Processing r/{}", subreddit_name));
+        
+        match process_subreddit(subreddit_path) {
             Ok(()) => {},
             Err(e) => {
                 error!("Error processing subreddit {:?}: {}", subreddit_path, e);
@@ -147,36 +185,66 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Scan for all subreddit directories in the processed data directory
-fn scan_subreddits(base_path: &PathBuf) -> Result<Vec<PathBuf>> {
-    let mut subreddits = Vec::new();
-
-    for prefix in SUBREDDIT_PREFIXES {
-        let prefix_path = base_path.join(prefix);
-        if !prefix_path.exists() {
-            continue;
+/// Find a specific subreddit path by name
+fn find_subreddit_path(base_path: &PathBuf, subreddit_name: &str) -> Result<PathBuf> {
+    // First, get all suffix directories (01, 02, etc.)
+    let suffix_dirs: Vec<PathBuf> = std::fs::read_dir(base_path)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_dir())
+        .collect();
+    
+    for suffix_dir in suffix_dirs {
+        let potential_path = suffix_dir.join(subreddit_name);
+        if potential_path.exists() && potential_path.is_dir() {
+            return Ok(potential_path);
         }
+    }
+    
+    anyhow::bail!("Subreddit '{}' not found in any suffix directory", subreddit_name);
+}
 
-        let subreddit_dirs = std::fs::read_dir(&prefix_path)?
+/// Scan for all subreddit directories in the processed data directory
+/// Uses the same dynamic scanning logic as phase2_orchestrator
+fn scan_subreddits(base_path: &PathBuf) -> Result<Vec<PathBuf>> {
+    // First, get all suffix directories (01, 02, etc.)
+    let suffix_dirs: Vec<PathBuf> = std::fs::read_dir(base_path)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_dir())
+        .collect();
+    
+    info!("Found {} suffix directories. Scanning each for subreddits...", suffix_dirs.len());
+
+    let mut list: Vec<PathBuf> = Vec::new();
+    for (idx, suffix_dir) in suffix_dirs.iter().enumerate() {
+        let suffix_name = suffix_dir.file_name().unwrap_or_default().to_string_lossy();
+        info!("Scanning suffix {}/{}: {}", idx + 1, suffix_dirs.len(), suffix_name);
+        
+        let subreddit_dirs = std::fs::read_dir(&suffix_dir)?
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| p.is_dir());
-
-        subreddits.extend(subreddit_dirs);
+        
+        let before_count = list.len();
+        list.extend(subreddit_dirs);
+        let added = list.len() - before_count;
+        info!("  Found {} subreddits in suffix {}", added, suffix_name);
     }
-
-    subreddits.sort();
-    Ok(subreddits)
+    
+    info!("Total {} subreddit directories found. Sorting...", list.len());
+    list.sort(); // Crucial for deterministic ordering
+    info!("Sorted.");
+    
+    Ok(list)
 }
 
 /// Process a single subreddit directory
-fn process_subreddit(subreddit_path: &PathBuf, main_pb: &ProgressBar) -> Result<()> {
+fn process_subreddit(subreddit_path: &PathBuf) -> Result<()> {
     let subreddit_name = subreddit_path
         .file_name()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
 
-    main_pb.set_message(format!("Processing r/{}", subreddit_name));
+    info!("Processing r/{}", subreddit_name);
 
     // Find all parquet files for this subreddit
     let parquet_files: Vec<PathBuf> = WalkDir::new(subreddit_path)
@@ -190,181 +258,191 @@ fn process_subreddit(subreddit_path: &PathBuf, main_pb: &ProgressBar) -> Result<
         .collect();
 
     if parquet_files.is_empty() {
-        main_pb.inc(1);
+        info!("  No parquet files found, skipping");
         return Ok(());
     }
 
-    // Read all ideas from all files in this subreddit
-    let mut all_dataframes = Vec::new();
-    let mut message_map: HashMap<String, MessageNode> = HashMap::new();
+    info!("  Found {} parquet files", parquet_files.len());
 
+    // Create an in-memory DuckDB database
+    let conn = Connection::open_in_memory()
+        .context("Failed to create DuckDB connection")?;
+
+    // Create a table to hold all messages
+    conn.execute(
+        "CREATE TABLE messages (
+            id VARCHAR,
+            parent_id VARCHAR,
+            link_id VARCHAR,
+            body VARCHAR,
+            is_idea BOOLEAN,
+            subreddit VARCHAR,
+            author VARCHAR,
+            permalink VARCHAR,
+            created_utc BIGINT,
+            ups BIGINT,
+            downs BIGINT,
+            sanitized_prefix VARCHAR,
+            cpu_filter_is_idea BOOLEAN,
+            nlp_top_score DOUBLE
+        )",
+        [],
+    ).context("Failed to create messages table")?;
+
+    // Load ALL messages from all parquet files into DuckDB
+    info!("  Loading all messages into DuckDB...");
     for file_path in &parquet_files {
-        match read_ideas_from_file(file_path) {
-            Ok((df, nodes)) => {
-                if df.height() > 0 {
-                    all_dataframes.push(df);
-                }
-                for node in nodes {
-                    message_map.insert(node.id.clone(), node);
-                }
-            }
+        let file_path_str = file_path.to_string_lossy();
+        // Explicitly select columns to avoid schema inference issues
+        let sql = format!(
+            "INSERT INTO messages 
+             SELECT 
+                id, parent_id, link_id, body, is_idea, 
+                subreddit, author, permalink, created_utc, 
+                ups, downs, sanitized_prefix, cpu_filter_is_idea, nlp_top_score
+             FROM read_parquet('{}')",
+            file_path_str
+        );
+        
+        match conn.execute(&sql, []) {
+            Ok(_) => {},
             Err(e) => {
-                warn!("Failed to read file {:?}: {}", file_path, e);
+                warn!("  Failed to load file {:?}: {}", file_path, e);
                 continue;
             }
         }
     }
 
-    if all_dataframes.is_empty() {
-        main_pb.inc(1);
+    // Get total count of ideas
+    let idea_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM messages WHERE is_idea = true", [], |row| row.get(0))
+        .context("Failed to count ideas")?;
+
+    if idea_count == 0 {
+        info!("  No ideas found, skipping");
         return Ok(());
     }
 
-    // Concatenate all dataframes vertically (same schema, different rows)
-    let all_messages = if all_dataframes.len() == 1 {
-        all_dataframes.into_iter().next().unwrap()
-    } else {
-        let mut combined = all_dataframes[0].clone();
-        for df in &all_dataframes[1..] {
-            combined = combined.vstack(df)
-                .context("Failed to vertically stack dataframes")?;
+    info!("  Found {} ideas to process", idea_count);
+
+    // Process ideas in chunks and write each chunk immediately
+    let num_chunks = ((idea_count as usize) + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+    info!("  Processing {} ideas in {} chunks of {} (writing each chunk immediately)", idea_count, num_chunks, CHUNK_SIZE);
+
+    let mut total_valid_ideas = 0;
+
+    for chunk_idx in 0..num_chunks {
+        let offset = chunk_idx * CHUNK_SIZE;
+        
+        // Get a chunk of idea IDs
+        let mut stmt = conn.prepare(
+            "SELECT id, parent_id FROM messages WHERE is_idea = true LIMIT ? OFFSET ?"
+        ).context("Failed to prepare chunk query")?;
+
+        let idea_rows = stmt
+            .query_map(params![CHUNK_SIZE as i64, offset as i64], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })
+            .context("Failed to query chunk")?;
+
+        let mut chunk_valid_ids: HashSet<String> = HashSet::new();
+
+        for row in idea_rows {
+            let (id, parent_id) = row.context("Failed to get row data")?;
+            
+            // Trace this idea's chain to see if it's complete
+            if has_complete_chain(&id, &parent_id, &conn)? {
+                chunk_valid_ids.insert(id);
+            }
         }
-        combined
-    };
 
+        info!("    Chunk {}/{}: {} valid ideas", chunk_idx + 1, num_chunks, chunk_valid_ids.len());
+        
+        // Write this chunk immediately if it has any valid ideas
+        if !chunk_valid_ids.is_empty() {
+            write_chunk_to_parquet(subreddit_path, &conn, &chunk_valid_ids, chunk_idx)?;
+            total_valid_ideas += chunk_valid_ids.len();
+        }
+        
+        // chunk_valid_ids is dropped here, freeing memory
+    }
 
-    // Build chains: keep only messages that have a complete chain to a root
-    let chain_messages = build_chains(&all_messages, &message_map)?;
-
-    if chain_messages.height() == 0 {
-        main_pb.inc(1);
+    if total_valid_ideas == 0 {
+        info!("  No valid chains found, skipping");
         return Ok(());
     }
 
-    // Write the chains to output
-    write_chains(subreddit_path, &chain_messages)?;
+    info!("  Total valid ideas with complete chains: {}", total_valid_ideas);
 
-    main_pb.inc(1);
     Ok(())
 }
 
-/// Read ideas from a parquet file and return both the full dataframe and message nodes
-fn read_ideas_from_file(file_path: &PathBuf) -> Result<(DataFrame, Vec<MessageNode>)> {
-    let file = std::fs::File::open(file_path)
-        .context(format!("Failed to open file: {:?}", file_path))?;
+/// Check if a message has a complete chain to a root (parent_id = null)
+/// This function looks at ALL messages (not just ideas) when tracing parents
+fn has_complete_chain(
+    id: &str,
+    parent_id: &Option<String>,
+    conn: &Connection,
+) -> Result<bool> {
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut current_id = id.to_string();
+    let mut current_parent_id = parent_id.clone();
 
-    let df = ParquetReader::new(file)
-        .finish()
-        .context(format!("Failed to read parquet file: {:?}", file_path))?;
-
-    // Filter for rows where is_idea = true
-    let ideas_df = df
-        .lazy()
-        .filter(col("is_idea").eq(lit(true)))
-        .collect()
-        .context("Failed to filter for ideas")?;
-
-    if ideas_df.height() == 0 {
-        return Ok((ideas_df, Vec::new()));
-    }
-
-    // Extract message nodes for relationship building
-    let id_series = ideas_df.column("id")?.str()?;
-    let parent_id_series = ideas_df.column("parent_id")?.str()?;
-    let link_id_series = ideas_df.column("link_id")?.str()?;
-    let body_series = ideas_df.column("body")?.str()?;
-
-    let mut nodes = Vec::new();
-    for i in 0..ideas_df.height() {
-        let id = id_series.get(i).context("Missing id")?.to_string();
-        let parent_id = parent_id_series.get(i).map(|s| s.to_string());
-        let link_id = link_id_series.get(i).map(|s| s.to_string());
-        let body = body_series.get(i).context("Missing body")?.to_string();
-
-        nodes.push(MessageNode {
-            id,
-            parent_id,
-            link_id,
-            body,
-            row_index: i,
-        });
-    }
-
-    Ok((ideas_df, nodes))
-}
-
-/// Build chains by keeping only messages that have a complete path to a root (parent_id = null)
-fn build_chains(
-    df: &DataFrame,
-    message_map: &HashMap<String, MessageNode>,
-) -> Result<DataFrame> {
-    let mut valid_ids = HashSet::new();
-
-    // For each message, check if it has a complete chain to root
-    for (id, node) in message_map.iter() {
-        if has_path_to_root(node, message_map, &mut HashSet::new()) {
-            valid_ids.insert(id.clone());
+    loop {
+        // Check for circular reference
+        if visited.contains(&current_id) {
+            return Ok(false);
         }
-    }
+        visited.insert(current_id.clone());
 
-    if valid_ids.is_empty() {
-        return Ok(DataFrame::default().lazy().collect()?);
-    }
+        // Check if we've reached the root
+        if current_parent_id.is_none() || current_parent_id.as_ref().map_or(false, |p| p.is_empty()) {
+            return Ok(true);
+        }
 
-    // Filter the dataframe to keep only valid IDs
-    let id_series = df.column("id")?.str()?;
-    let mask: BooleanChunked = id_series
-        .into_iter()
-        .map(|opt_id| {
-            opt_id.map(|id| valid_ids.contains(id)).unwrap_or(false)
-        })
-        .collect();
+        // Extract the actual parent ID from the link format (e.g., "t1_abc123" -> "abc123")
+        let parent_id_clean = current_parent_id.as_ref().unwrap();
+        let parent_id_clean = if parent_id_clean.contains('_') {
+            parent_id_clean.split('_').nth(1).unwrap_or(parent_id_clean)
+        } else {
+            parent_id_clean
+        };
 
-    let filtered_df = df.filter(&mask)?;
-    Ok(filtered_df)
-}
+        // Look up the parent in the database (checking ALL messages, not just ideas)
+        let result = conn.query_row(
+            "SELECT id, parent_id FROM messages WHERE id = ?",
+            params![parent_id_clean],
+            |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            },
+        );
 
-/// Recursively check if a message has a path to a root (parent_id = null)
-fn has_path_to_root(
-    node: &MessageNode,
-    message_map: &HashMap<String, MessageNode>,
-    visited: &mut HashSet<String>,
-) -> bool {
-    // Avoid infinite loops
-    if visited.contains(&node.id) {
-        return false;
-    }
-    visited.insert(node.id.clone());
-
-    // Check if this is a root node
-    if node.parent_id.is_none() || node.parent_id.as_ref().map_or(false, |p| p.is_empty()) {
-        return true;
-    }
-
-    // Extract the actual parent ID from the link format (e.g., "t1_abc123" -> "abc123")
-    let parent_id = match &node.parent_id {
-        Some(pid) => {
-            // Reddit parent IDs are in the format "t1_xxxxx" or "t3_xxxxx"
-            if pid.contains('_') {
-                pid.split('_').nth(1).unwrap_or(pid).to_string()
-            } else {
-                pid.clone()
+        match result {
+            Ok((parent_msg_id, parent_parent_id)) => {
+                // Continue tracing up the chain
+                current_id = parent_msg_id;
+                current_parent_id = parent_parent_id;
+            }
+            Err(duckdb::Error::QueryReturnedNoRows) => {
+                // Parent not found, chain is broken
+                return Ok(false);
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!("Database error: {}", e));
             }
         }
-        None => return false,
-    };
-
-    // Check if parent exists in our dataset
-    if let Some(parent_node) = message_map.get(&parent_id) {
-        return has_path_to_root(parent_node, message_map, visited);
     }
-
-    // Parent doesn't exist in our dataset, chain is broken
-    false
 }
 
-/// Write chains to output parquet files, maintaining the same directory structure
-fn write_chains(subreddit_path: &PathBuf, chain_df: &DataFrame) -> Result<()> {
+/// Write a single chunk of valid chains to an output parquet file
+/// Each chunk gets its own file: chains_chunk_0.parquet, chains_chunk_1.parquet, etc.
+fn write_chunk_to_parquet(
+    subreddit_path: &PathBuf,
+    conn: &Connection,
+    valid_ids: &HashSet<String>,
+    chunk_idx: usize,
+) -> Result<()> {
     // Extract the relative path from PROCESSED_DATA_DIR
     let relative_path = subreddit_path
         .strip_prefix(PROCESSED_DATA_DIR)
@@ -375,21 +453,51 @@ fn write_chains(subreddit_path: &PathBuf, chain_df: &DataFrame) -> Result<()> {
     std::fs::create_dir_all(&output_path)
         .context(format!("Failed to create output directory: {:?}", output_path))?;
 
-    // Group by month (if created_utc exists) or write as single file
-    let output_file = output_path.join("chains.parquet");
-    
-    let mut file = std::fs::File::create(&output_file)
-        .context(format!("Failed to create output file: {:?}", output_file))?;
+    let output_file = output_path.join(format!("chains_chunk_{}.parquet", chunk_idx));
+    let output_file_str = output_file.to_string_lossy();
 
-    ParquetWriter::new(&mut file)
-        .with_compression(ParquetCompression::Zstd(None))
-        .finish(&mut chain_df.clone())
+    // Build a SQL query with all valid IDs for this chunk
+    // For large sets, we'll use a temporary table
+    conn.execute("DROP TABLE IF EXISTS chunk_valid_ids", [])
+        .context("Failed to drop temp table")?;
+    
+    conn.execute("CREATE TEMP TABLE chunk_valid_ids (id VARCHAR)", [])
+        .context("Failed to create temp table")?;
+
+    // Insert valid IDs in batches
+    let batch_size = 1000;
+    let valid_ids_vec: Vec<&String> = valid_ids.iter().collect();
+    
+    for chunk in valid_ids_vec.chunks(batch_size) {
+        let values: Vec<String> = chunk.iter().map(|id| format!("('{}')", id)).collect();
+        let values_str = values.join(",");
+        let sql = format!("INSERT INTO chunk_valid_ids VALUES {}", values_str);
+        conn.execute(&sql, [])
+            .context("Failed to insert valid IDs")?;
+    }
+
+    // Export valid ideas to parquet
+    let sql = format!(
+        "COPY (SELECT m.* FROM messages m INNER JOIN chunk_valid_ids v ON m.id = v.id WHERE m.is_idea = true) 
+         TO '{}' (FORMAT PARQUET, COMPRESSION ZSTD)",
+        output_file_str
+    );
+
+    conn.execute(&sql, [])
         .context(format!("Failed to write parquet file: {:?}", output_file))?;
 
+    // Get count for logging
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM messages m INNER JOIN chunk_valid_ids v ON m.id = v.id WHERE m.is_idea = true",
+        [],
+        |row| row.get(0)
+    ).context("Failed to get count")?;
+
     info!(
-        "✓ Wrote {} chain messages to {:?}",
-        chain_df.height(),
-        output_file
+        "    ✓ Wrote {} ideas from chunk {} to {:?}",
+        count,
+        chunk_idx,
+        output_file.file_name().unwrap()
     );
 
     Ok(())
