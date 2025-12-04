@@ -15,3 +15,8 @@ env_logger = "0.11.8"
 indicatif = "0.17"
 duckdb = { version = "1.1", features = ["bundled"] }
 clap = { version = "4.4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+mdns-sd = "0.10"
+bincode = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+gethostname = "0.5"
