@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 use crate::processing::process_subreddit;
 
-const CHECKPOINT_DIR: &str = "/Users/teomiscia/web/business-finder/rust/checkpoint";
+// Default checkpoint directory - will be created relative to current directory if not absolute
+const CHECKPOINT_DIR: &str = "checkpoint";
 const CHECKPOINT_FILE: &str = "phase3_progress.json";
 const SUBREDDITS_LIST_FILE: &str = "subreddits_list.json";
 

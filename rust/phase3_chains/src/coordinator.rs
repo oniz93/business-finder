@@ -7,6 +7,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use uuid::Uuid;
 
+use crate::constants::MAX_MESSAGE_SIZE;
 use crate::discovery::announce_coordinator;
 use crate::protocol::{Message, TaskStatus};
 
@@ -170,8 +171,7 @@ async fn handle_worker(
         }
 
         let msg_len = u32::from_be_bytes(len_bytes) as usize;
-        if msg_len > 10_000_000 {
-            // 10MB max message size
+        if msg_len > MAX_MESSAGE_SIZE {
             error!("Message too large from {}: {} bytes", peer_addr, msg_len);
             break;
         }

@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
+use crate::constants::MAX_MESSAGE_SIZE;
 use crate::discovery::discover_coordinator;
 use crate::processing::process_subreddit;
 use crate::protocol::{Message, TaskStatus};
@@ -34,7 +35,7 @@ async fn receive_message(stream: &mut TcpStream) -> Result<Message> {
     stream.read_exact(&mut len_bytes).await?;
     let msg_len = u32::from_be_bytes(len_bytes) as usize;
 
-    if msg_len > 10_000_000 {
+    if msg_len > MAX_MESSAGE_SIZE {
         anyhow::bail!("Message too large: {} bytes", msg_len);
     }
 
