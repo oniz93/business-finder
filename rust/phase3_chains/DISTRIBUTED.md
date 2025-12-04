@@ -320,10 +320,96 @@ Workers log all task processing:
 - Coordinator handles 1000s of tasks efficiently
 - Network bandwidth is typically not a bottleneck
 
+## Persistent Task Queue
+
+The coordinator now supports persistent checkpointing to survive restarts without losing progress.
+
+### Checkpoint Files
+
+All checkpoint files are stored in the `checkpoint/` directory:
+
+1. **`coordinator_state.json`** - Full coordinator state including all tasks and their status
+2. **`subreddits_list.json`** - Cached list of subreddit directories (avoids rescanning)
+3. **`phase3_progress.json.migrated`** - Backup of migrated standalone checkpoint
+
+### Checkpoint Format
+
+The coordinator saves a JSON checkpoint every 30 seconds containing:
+
+```json
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "uuid-here",
+      "relative_path": "01/subreddit_name",
+      "state": "Pending" | { "Assigned": { "worker_id": "..." }} | "Completed" | { "Failed": { "error": "..." }}
+    }
+  ]
+}
+```
+
+### Migration from Standalone Mode
+
+If you've been running in standalone mode and want to switch to distributed mode, the coordinator will automatically migrate your progress:
+
+1. **Detection**: On startup, coordinator looks for `checkpoint/phase3_progress.json`
+2. **Migration**: Reads the `subreddit_index` and marks all subreddits before that index as completed
+3. **Conversion**: Creates coordinator tasks from the standalone checkpoint
+4. **Backup**: Renames old checkpoint to `phase3_progress.json.migrated`
+5. **Save**: Writes new coordinator checkpoint format
+
+Example migration log:
+```
+📦 Found old standalone checkpoint, migrating...
+   Standalone was at subreddit index 1234/5678
+✓ Migrated 1234 completed and 4444 pending tasks from standalone checkpoint
+   Backed up old checkpoint to "checkpoint/phase3_progress.json.migrated"
+```
+
+### Resume Behavior
+
+When coordinator restarts:
+
+1. **Load Checkpoint**: Reads `checkpoint/coordinator_state.json` if it exists
+2. **Load Subreddits**: Uses cached `subreddits_list.json` to avoid rescanning
+3. **Restore State**:
+   - **Completed tasks**: Kept as completed, not re-queued
+   - **Pending tasks**: Re-added to task queue
+   - **Failed tasks**: Re-added to task queue for retry
+   - **Assigned tasks**: Re-queued as pending (workers may have died during restart)
+4. **Continue**: Starts accepting worker connections and distributing remaining tasks
+
+### Important Notes
+
+- **Periodic Saves**: Checkpoint is saved every 30 seconds during normal operation
+- **No Data Loss**: Even if coordinator crashes, at most 30 seconds of progress is lost
+- **Worker-Safe**: Workers are unaffected by coordinator restarts - they just reconnect
+- **Disk Space**: Checkpoint file size is proportional to number of subreddits (~1KB per 10 subreddits)
+- **Manual Recovery**: If needed, you can edit the checkpoint JSON manually to fix task states
+
+### Example Restart Workflow
+
+```bash
+# Initial start - creates checkpoint
+./phase3_chains --mode coordinator --data-dir /data --output-dir /output
+
+# ... processing for a while ...
+# Coordinator crashes or needs restart
+
+# Restart - automatically resumes from checkpoint
+./phase3_chains --mode coordinator --data-dir /data --output-dir /output
+
+# Logs show:
+# 📍 Found coordinator checkpoint at "checkpoint/coordinator_state.json"
+# ✓ Loaded 5678 tasks from checkpoint (version 1)
+# 📊 Restored state: 4000 pending, 1500 completed, 50 failed, 128 reassigned from assigned
+```
+
 ## Future Improvements
 
 Potential enhancements:
-- [ ] Persistent task queue (survive coordinator restarts)
+- [x] Persistent task queue (survive coordinator restarts) - **IMPLEMENTED**
 - [ ] Web UI for monitoring progress
 - [ ] Dynamic worker scaling based on load
 - [ ] Task prioritization (process large subreddits first)
