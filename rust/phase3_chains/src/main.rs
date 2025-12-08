@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::collections::HashSet;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Serialize, Deserialize};
+use sysinfo::{System, RefreshKind, MemoryRefreshKind};
 
 // Configuration constants
 const PROCESSED_DATA_DIR: &str = "/Volumes/2TBSSD/reddit/processed";
@@ -267,6 +268,20 @@ fn process_subreddit(subreddit_path: &PathBuf) -> Result<()> {
     // Create an in-memory DuckDB database
     let conn = Connection::open_in_memory()
         .context("Failed to create DuckDB connection")?;
+
+    // Set memory limit to 90% of system RAM
+    let mut sys = System::new_with_specifics(
+        RefreshKind::new().with_memory(MemoryRefreshKind::everything())
+    );
+    sys.refresh_memory();
+    let total_mem = sys.total_memory();
+    let memory_limit = (total_mem as f64 * 0.9) as u64;
+    let memory_limit_gb = memory_limit as f64 / 1024.0 / 1024.0 / 1024.0;
+    
+    info!("  System memory: {} bytes. Setting DuckDB memory limit to {:.2} GB", total_mem, memory_limit_gb);
+    
+    conn.execute(&format!("PRAGMA memory_limit='{}B'", memory_limit), [])
+        .context("Failed to set memory limit")?;
 
     // Create a table to hold all messages
     conn.execute(
