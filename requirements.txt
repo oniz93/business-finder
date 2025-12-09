@@ -24,3 +24,4 @@ pyarrow
 rich
 redis
 tabulate
+hdbscan
