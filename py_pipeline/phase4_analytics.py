@@ -1,35 +1,37 @@
 #!/usr/bin/env python3
 """
-Phase 4: AI-Powered Aggregation & Business Plan Generation
+Phase 4: AI-Powered Aggregation (Clustering Only)
 
 This module performs:
 1. Data Loading (Polars) - Reads Parquet files from Phase 3 chains output.
 2. Embedding (SentenceTransformers) - Generates vectors using MPS (Mac GPU).
 3. Clustering (HDBSCAN) - Clusters vectors to identify common business themes.
-4. Summarization (Gemini Async) - Summarizes clusters into opportunities.
-5. Business Plan Generation (Gemini Async) - Generates full business plans.
-6. Storage (Polars) - Saves all outputs to Parquet.
+4. Storage (Polars) - Saves clustered opportunities to Parquet.
+
+It operates at the subreddit level and uses checkpointing to resume progress,
+similar to the Rust Phase 3 implementation.
 """
 
 import os
 import sys
 import glob
 import json
-import asyncio
 import argparse
-from typing import List, Dict, Optional, Tuple, Any
-from dataclasses import dataclass, field
+from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from pathlib import Path
 
 import polars as pl
 import numpy as np
 from rich.console import Console
-from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, SpinnerColumn
-from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 
 # Import project config
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
-from src.utils import sanitize_for_filesystem
+# Local import for simple sanitization if config doesn't have it or to ensure standalone capability
+def sanitize_for_filesystem(name: str) -> str:
+    return "".join([c for c in name if c.isalnum() or c in (' ', '-', '_')]).strip()
 
 # Initialize console for logging
 console = Console()
@@ -38,19 +40,25 @@ console = Console()
 # Configuration
 # -----------------------------------------------------------------------------
 
-# Embedding model - good balance of speed and quality
+# Input/Output Directories
+# Based on Rust Phase 3 output
+CHAINS_INPUT_DIR = "/Volumes/2TBSSD/reddit/chains"
+CLUSTERS_OUTPUT_DIR = "/Volumes/2TBSSD/reddit/clusters"
+
+# Checkpointing
+CHECKPOINT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoint")
+CHECKPOINT_FILE = "phase4_progress.json"
+SUBREDDITS_LIST_FILE = "subreddits_list_phase4.json"
+
+# Embedding model
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+
 # HDBSCAN parameters
 MIN_CLUSTER_SIZE = 5
 MIN_SAMPLES = 3
-# Gemini settings
-GEMINI_MODEL_NAME = "gemini-1.5-pro-latest"
-MAX_CONCURRENT_GEMINI_CALLS = 10
-# Output directory
-ANALYSIS_OUTPUT_DIR = os.path.join(config.PROCESSED_DATA_DIR, "..", "analysis")
+
 # Batching
 EMBEDDING_BATCH_SIZE = 32
-
 
 # -----------------------------------------------------------------------------
 # Data Classes
@@ -63,9 +71,88 @@ class Opportunity:
     representative_texts: List[str]
     cluster_size: int
     avg_quality_score: float
-    opportunity_summary: Optional[str] = None
-    business_plan_json: Optional[str] = None
 
+# -----------------------------------------------------------------------------
+# State Management
+# -----------------------------------------------------------------------------
+
+def load_progress() -> dict:
+    """Load progress from checkpoint file."""
+    path = os.path.join(CHECKPOINT_DIR, CHECKPOINT_FILE)
+    if os.path.exists(path):
+        try:
+            with open(path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            console.print(f"[yellow]Failed to load progress: {e}[/yellow]")
+    return {"subreddit_index": 0}
+
+def save_progress(index: int):
+    """Save progress to checkpoint file."""
+    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    path = os.path.join(CHECKPOINT_DIR, CHECKPOINT_FILE)
+    with open(path, 'w') as f:
+        json.dump({"subreddit_index": index}, f, indent=2)
+
+def load_subreddits_list() -> Optional[List[str]]:
+    """Load cached list of subreddits."""
+    path = os.path.join(CHECKPOINT_DIR, SUBREDDITS_LIST_FILE)
+    if os.path.exists(path):
+        console.print(f"[green]✓ Found cached subreddits list at {path}[/green]")
+        try:
+            with open(path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            console.print(f"[yellow]Failed to parse subreddits list: {e}[/yellow]")
+    return None
+
+def save_subreddits_list(subreddits: List[str]):
+    """Save list of subreddits to cache."""
+    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    path = os.path.join(CHECKPOINT_DIR, SUBREDDITS_LIST_FILE)
+    with open(path, 'w') as f:
+        json.dump(subreddits, f, indent=2)
+
+def scan_subreddits(base_path: str) -> List[str]:
+    """
+    Scan for subreddit directories in the chains input directory.
+    Uses the suffix structure if present (e.g. chains/01/NeedIdea).
+    Mirrors the logic in Rust Phase 3 to find valid input directories.
+    """
+    base = Path(base_path)
+    if not base.exists():
+        console.print(f"[red]Input directory does not exist: {base}[/red]")
+        return []
+
+    console.print("[blue]Scanning for subreddit directories...[/blue]")
+    subreddits = []
+    
+    try:
+        items = list(base.iterdir())
+    except OSError as e:
+        console.print(f"[red]Error reading directory: {e}[/red]")
+        return []
+
+    # Heuristic: if items are mostly 2 digit numbers, assume suffix structure from Phase 3
+    suffix_dirs = [x for x in items if x.is_dir() and x.name.isdigit() and len(x.name) == 2]
+    
+    if len(suffix_dirs) > 0:
+        console.print(f"[blue]Found {len(suffix_dirs)} suffix directories. Scanning recursively...[/blue]")
+        for suffix in sorted(suffix_dirs):
+            try:
+                subs = [x for x in suffix.iterdir() if x.is_dir()]
+                for sub in subs:
+                    subreddits.append(str(sub))
+            except OSError:
+                continue
+    else:
+        # Flat structure fallback
+        console.print("[blue]Assuming flat directory structure...[/blue]")
+        subreddits = [str(x) for x in items if x.is_dir()]
+
+    subreddits.sort()
+    console.print(f"[green]✓ Found {len(subreddits)} subreddit directories[/green]")
+    return subreddits
 
 # -----------------------------------------------------------------------------
 # Embedder Class
@@ -100,61 +187,43 @@ class Embedder:
         
         console.print(f"[blue]Loading embedding model: {self.model_name}[/blue]")
         self.model = SentenceTransformer(self.model_name, device=self.device)
-        console.print("[green]Embedding model loaded successfully[/green]")
     
-    def embed(self, texts: List[str], batch_size: int = EMBEDDING_BATCH_SIZE, 
-              show_progress: bool = True) -> np.ndarray:
-        """
-        Embed a list of texts into vectors.
-        
-        Args:
-            texts: List of text strings to embed.
-            batch_size: Batch size for encoding.
-            show_progress: Whether to show a progress bar.
-        
-        Returns:
-            NumPy array of embeddings with shape (len(texts), embedding_dim).
-        """
+    def embed(self, texts: List[str], batch_size: int = EMBEDDING_BATCH_SIZE) -> np.ndarray:
+        """Embed a list of texts into vectors."""
         if self.model is None:
             self.load_model()
         
+        if not texts:
+            return np.array([])
+            
         embeddings = self.model.encode(
             texts,
             batch_size=batch_size,
-            show_progress_bar=show_progress,
+            show_progress_bar=False,
             convert_to_numpy=True,
-            normalize_embeddings=True  # Normalize for cosine similarity
+            normalize_embeddings=True
         )
         return embeddings
-
 
 # -----------------------------------------------------------------------------
 # Clusterer Class
 # -----------------------------------------------------------------------------
 
 class Clusterer:
-    """
-    Wraps HDBSCAN clustering logic for grouping similar ideas.
-    """
+    """Wraps HDBSCAN clustering logic."""
     
-    def __init__(self, min_cluster_size: int = MIN_CLUSTER_SIZE, 
-                 min_samples: int = MIN_SAMPLES):
+    def __init__(self, min_cluster_size: int = MIN_CLUSTER_SIZE, min_samples: int = MIN_SAMPLES):
         self.min_cluster_size = min_cluster_size
         self.min_samples = min_samples
     
     def cluster(self, embeddings: np.ndarray) -> np.ndarray:
-        """
-        Cluster embeddings using HDBSCAN.
-        
-        Args:
-            embeddings: NumPy array of embeddings (N, D).
-        
-        Returns:
-            Array of cluster labels for each embedding. -1 indicates noise.
-        """
+        """Cluster embeddings using HDBSCAN."""
+        if embeddings.shape[0] == 0:
+            return np.array([])
+            
         try:
             import hdbscan
-            console.print("[blue]Using HDBSCAN for clustering[/blue]")
+            # Suppress HDBSCAN joblib warnings if possible
             clusterer = hdbscan.HDBSCAN(
                 min_cluster_size=self.min_cluster_size,
                 min_samples=self.min_samples,
@@ -162,183 +231,11 @@ class Clusterer:
                 cluster_selection_method="eom"
             )
         except ImportError:
-            # Fallback to sklearn if hdbscan not installed
             console.print("[yellow]HDBSCAN not found, falling back to sklearn DBSCAN[/yellow]")
             from sklearn.cluster import DBSCAN
             clusterer = DBSCAN(eps=0.5, min_samples=self.min_samples)
         
-        cluster_labels = clusterer.fit_predict(embeddings)
-        
-        # Log clustering stats
-        n_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
-        n_noise = list(cluster_labels).count(-1)
-        console.print(f"[green]Clustering complete: {n_clusters} clusters, {n_noise} noise points[/green]")
-        
-        return cluster_labels
-
-
-# -----------------------------------------------------------------------------
-# IdeaGenerator Class (Async Gemini)
-# -----------------------------------------------------------------------------
-
-class IdeaGenerator:
-    """
-    Handles async Gemini API calls for summarization and business plan generation.
-    """
-    
-    def __init__(self, model_name: str = GEMINI_MODEL_NAME, 
-                 max_concurrent: int = MAX_CONCURRENT_GEMINI_CALLS):
-        self.model_name = model_name
-        self.max_concurrent = max_concurrent
-        self._semaphore = None
-        self._model = None
-    
-    def _setup_client(self):
-        """Initialize the Gemini client."""
-        import google.generativeai as genai
-        
-        # Check for API key
-        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "Gemini API key not found. Set GOOGLE_API_KEY or GEMINI_API_KEY environment variable."
-            )
-        
-        genai.configure(api_key=api_key)
-        self._model = genai.GenerativeModel(self.model_name)
-        self._semaphore = asyncio.Semaphore(self.max_concurrent)
-        console.print(f"[green]Gemini client initialized with model: {self.model_name}[/green]")
-    
-    async def _call_gemini(self, prompt: str) -> str:
-        """
-        Make a single API call to Gemini with rate limiting.
-        
-        Args:
-            prompt: The prompt to send.
-        
-        Returns:
-            The generated text response.
-        """
-        if self._model is None:
-            self._setup_client()
-        
-        async with self._semaphore:
-            try:
-                response = await self._model.generate_content_async(prompt)
-                return response.text
-            except Exception as e:
-                console.print(f"[red]Gemini API error: {e}[/red]")
-                return f"Error: {str(e)}"
-    
-    async def summarize_cluster(self, texts: List[str]) -> str:
-        """
-        Summarize a cluster of related ideas into a single opportunity statement.
-        
-        Args:
-            texts: List of representative texts from the cluster.
-        
-        Returns:
-            A concise 1-2 sentence opportunity summary.
-        """
-        prompt = f"""You are a business analyst identifying market opportunities from Reddit discussions.
-
-Below are {len(texts)} related Reddit posts/comments that share a common theme:
-
----
-{chr(10).join(f"- {t[:500]}" for t in texts[:10])}
----
-
-Synthesize these into ONE clear, actionable business opportunity statement (1-2 sentences).
-Focus on:
-1. The core unmet need or pain point
-2. The potential solution or product category
-3. The target audience
-
-Respond with ONLY the opportunity statement, no preamble."""
-
-        return await self._call_gemini(prompt)
-    
-    async def generate_business_plan(self, opportunity_summary: str, 
-                                     supporting_texts: List[str]) -> str:
-        """
-        Generate a full business plan for a given opportunity.
-        
-        Args:
-            opportunity_summary: The synthesized opportunity statement.
-            supporting_texts: Sample texts that support this opportunity.
-        
-        Returns:
-            A JSON-formatted business plan.
-        """
-        prompt = f"""You are a startup business consultant. Generate a comprehensive business plan for the following opportunity:
-
-**Opportunity:** {opportunity_summary}
-
-**Supporting Evidence from Reddit:**
-{chr(10).join(f"- {t[:300]}" for t in supporting_texts[:5])}
-
-Generate a business plan in the following JSON structure:
-{{
-    "executive_summary": "2-3 sentence overview",
-    "problem_statement": "The core problem being solved",
-    "proposed_solution": "Product/service description",
-    "target_market": {{
-        "primary_audience": "Description",
-        "market_size_estimate": "Small/Medium/Large with reasoning"
-    }},
-    "value_proposition": "Why customers would choose this",
-    "revenue_model": "How this makes money",
-    "competitive_advantages": ["advantage1", "advantage2"],
-    "key_risks": ["risk1", "risk2"],
-    "initial_mvp_steps": ["step1", "step2", "step3"],
-    "estimated_complexity": "Low/Medium/High",
-    "confidence_score": 0.0-1.0
-}}
-
-Respond with ONLY valid JSON, no markdown code blocks or preamble."""
-
-        return await self._call_gemini(prompt)
-    
-    async def process_opportunities(self, opportunities: List[Opportunity], 
-                                    progress: Optional[Progress] = None) -> List[Opportunity]:
-        """
-        Process all opportunities: summarize clusters and generate business plans.
-        
-        Args:
-            opportunities: List of Opportunity objects with representative_texts populated.
-            progress: Optional Rich progress bar.
-        
-        Returns:
-            List of Opportunity objects with summaries and business plans filled in.
-        """
-        if self._model is None:
-            self._setup_client()
-        
-        # Phase 1: Summarize all clusters concurrently
-        console.print(f"[blue]Summarizing {len(opportunities)} clusters...[/blue]")
-        
-        async def summarize_one(opp: Opportunity) -> Opportunity:
-            opp.opportunity_summary = await self.summarize_cluster(opp.representative_texts)
-            return opp
-        
-        summarize_tasks = [summarize_one(opp) for opp in opportunities]
-        opportunities = await asyncio.gather(*summarize_tasks)
-        
-        # Phase 2: Generate business plans concurrently
-        console.print(f"[blue]Generating business plans for {len(opportunities)} opportunities...[/blue]")
-        
-        async def generate_plan_one(opp: Opportunity) -> Opportunity:
-            opp.business_plan_json = await self.generate_business_plan(
-                opp.opportunity_summary,
-                opp.representative_texts
-            )
-            return opp
-        
-        plan_tasks = [generate_plan_one(opp) for opp in opportunities]
-        opportunities = await asyncio.gather(*plan_tasks)
-        
-        return list(opportunities)
-
+        return clusterer.fit_predict(embeddings)
 
 # -----------------------------------------------------------------------------
 # Pipeline Class
@@ -346,57 +243,19 @@ Respond with ONLY valid JSON, no markdown code blocks or preamble."""
 
 class Pipeline:
     """
-    Orchestrates the entire Phase 4 pipeline:
-    1. Load data from Parquet
-    2. Embed texts
-    3. Cluster embeddings
-    4. Summarize clusters
-    5. Generate business plans
-    6. Save results
+    Orchestrates the Phase 4 clustering pipeline per subreddit.
     """
     
-    def __init__(self, input_dir: str = None, output_dir: str = None):
-        self.input_dir = input_dir or config.PROCESSED_DATA_DIR
-        self.output_dir = output_dir or ANALYSIS_OUTPUT_DIR
-        
+    def __init__(self):
         self.embedder = Embedder()
         self.clusterer = Clusterer()
-        self.generator = IdeaGenerator()
-    
-    def find_input_files(self) -> List[str]:
-        """
-        Find all Parquet files from Phase 3 output.
-        Looks for chains_chunk_*.parquet or similar patterns.
-        """
-        patterns = [
-            os.path.join(self.input_dir, "**", "chains_*.parquet"),
-            os.path.join(self.input_dir, "**", "*.parquet"),
-        ]
         
-        files = []
-        for pattern in patterns:
-            found = glob.glob(pattern, recursive=True)
-            if found:
-                files.extend(found)
-                break  # Use first matching pattern
-        
-        # Deduplicate
-        files = list(set(files))
-        console.print(f"[blue]Found {len(files)} Parquet files to process[/blue]")
-        return files
+    def get_parquet_files(self, subreddit_path: str) -> List[str]:
+        """Find all Parquet files in the subreddit directory."""
+        return glob.glob(os.path.join(subreddit_path, "*.parquet"))
     
     def load_data(self, file_paths: List[str]) -> pl.DataFrame:
-        """
-        Load and combine data from multiple Parquet files.
-        
-        Args:
-            file_paths: List of paths to Parquet files.
-        
-        Returns:
-            Combined Polars DataFrame.
-        """
-        console.print(f"[blue]Loading data from {len(file_paths)} files...[/blue]")
-        
+        """Load and combine data from multiple Parquet files."""
         dfs = []
         for path in file_paths:
             try:
@@ -408,21 +267,11 @@ class Pipeline:
         if not dfs:
             return pl.DataFrame()
         
-        combined = pl.concat(dfs)
-        console.print(f"[green]Loaded {combined.height} rows total[/green]")
-        return combined
+        return pl.concat(dfs)
     
     def extract_texts(self, df: pl.DataFrame) -> Tuple[List[str], pl.DataFrame]:
-        """
-        Extract text content from the DataFrame.
-        
-        Args:
-            df: Input DataFrame.
-        
-        Returns:
-            Tuple of (list of texts, filtered DataFrame).
-        """
-        # Try various column names for text content
+        """Extract text content from the DataFrame."""
+        # Common column names for text in this pipeline
         text_columns = ["body", "text", "selftext", "content", "message"]
         text_col = None
         
@@ -432,226 +281,230 @@ class Pipeline:
                 break
         
         if text_col is None:
-            raise ValueError(f"No text column found. Available columns: {df.columns}")
+            return [], df.clear()
         
-        # Filter out empty/null texts
+        # Filter out empty/null/short texts
         df_filtered = df.filter(
             pl.col(text_col).is_not_null() & 
             (pl.col(text_col).str.len_chars() > 10)
         )
         
         texts = df_filtered[text_col].to_list()
-        console.print(f"[green]Extracted {len(texts)} texts for embedding[/green]")
-        
         return texts, df_filtered
-    
+
     def build_opportunities(self, df: pl.DataFrame, texts: List[str], 
                            cluster_labels: np.ndarray) -> List[Opportunity]:
-        """
-        Build Opportunity objects from clustered data.
+        """Build Opportunity objects from clustered data."""
+        # Add cluster labels
+        # Note: Polars requires Series length to match DataFrame
+        # If filtering happened during extract_texts, df here is df_filtered
         
-        Args:
-            df: The source DataFrame.
-            texts: List of texts that were clustered.
-            cluster_labels: Cluster assignment for each text.
+        df = df.with_columns(pl.Series("cluster_id", cluster_labels))
         
-        Returns:
-            List of Opportunity objects for non-noise clusters.
-        """
-        # Add cluster labels to a working copy
-        df_with_clusters = df.with_columns(
-            pl.Series("cluster_id", cluster_labels)
-        )
-        
-        # Filter out noise (-1)
-        df_clustered = df_with_clusters.filter(pl.col("cluster_id") >= 0)
+        # Filter noise (-1)
+        df_clustered = df.filter(pl.col("cluster_id") >= 0)
         
         opportunities = []
         unique_clusters = df_clustered["cluster_id"].unique().to_list()
         
         for cluster_id in unique_clusters:
-            cluster_df = df_clustered.filter(pl.col("cluster_id") == cluster_id)
-            cluster_texts = [texts[i] for i, label in enumerate(cluster_labels) if label == cluster_id]
+            # Reconstruct mask for texts list (which aligns with df rows)
+            # Texts and df rows are 1:1 at this point
             
-            # Get quality score if available
-            quality_col = None
-            for col in ["quality_score", "score", "nlp_score"]:
-                if col in cluster_df.columns:
-                    quality_col = col
+            # Get rows for this cluster
+            cluster_rows = df_clustered.filter(pl.col("cluster_id") == cluster_id)
+            
+            # Simple average quality score
+            avg_quality = 0.0
+            # Check for score columns
+            for col in ["quality_score", "score", "nlp_top_score", "ups"]:
+                if col in cluster_rows.columns:
+                    val = cluster_rows[col].mean()
+                    if val is not None:
+                        avg_quality = float(val)
+                        break
+            
+            # Get texts for this cluster using the text column we found earlier
+            # or just re-extract from the filtered rows
+            # This is safer than boolean indexing on the list if we have the df
+            text_columns = ["body", "text", "selftext", "content", "message"]
+            cluster_texts = []
+            for col in text_columns:
+                if col in cluster_rows.columns:
+                    cluster_texts = cluster_rows[col].to_list()
                     break
             
-            avg_quality = 0.0
-            if quality_col:
-                avg_quality = cluster_df[quality_col].mean() or 0.0
-            
-            # Sample representative texts (up to 10)
+            # Representative texts (top 10 by length or quality? Just take first 10 for speed)
             representative = cluster_texts[:10]
             
             opportunities.append(Opportunity(
                 cluster_id=int(cluster_id),
                 representative_texts=representative,
                 cluster_size=len(cluster_texts),
-                avg_quality_score=float(avg_quality)
+                avg_quality_score=avg_quality
             ))
         
-        console.print(f"[green]Built {len(opportunities)} opportunities from clusters[/green]")
         return opportunities
-    
-    def save_results(self, opportunities: List[Opportunity], subreddit: str = "all"):
-        """
-        Save opportunities to Parquet files.
-        
-        Args:
-            opportunities: List of processed Opportunity objects.
-            subreddit: Subreddit name for output directory organization.
-        """
-        output_dir = os.path.join(self.output_dir, sanitize_for_filesystem(subreddit))
+
+    def save_results(self, opportunities: List[Opportunity], subreddit_path: str):
+        """Save clusters to Parquet."""
+        # Calculate relative path to mirror structure
+        # e.g. /Volumes/2TBSSD/reddit/chains/01/subreddit -> 01/subreddit
+        try:
+            rel_path = os.path.relpath(subreddit_path, CHAINS_INPUT_DIR)
+        except ValueError:
+            # Fallback if on different drives
+            rel_path = os.path.basename(subreddit_path)
+            
+        output_dir = os.path.join(CLUSTERS_OUTPUT_DIR, rel_path)
         os.makedirs(output_dir, exist_ok=True)
         
-        # Convert to DataFrame
         data = {
             "cluster_id": [o.cluster_id for o in opportunities],
             "cluster_size": [o.cluster_size for o in opportunities],
             "avg_quality_score": [o.avg_quality_score for o in opportunities],
-            "opportunity_summary": [o.opportunity_summary for o in opportunities],
-            "business_plan_json": [o.business_plan_json for o in opportunities],
             "representative_texts": [json.dumps(o.representative_texts) for o in opportunities],
         }
         
         df = pl.DataFrame(data)
-        output_path = os.path.join(output_dir, "opportunities.parquet")
+        output_path = os.path.join(output_dir, "clusters.parquet")
         df.write_parquet(output_path)
+        # console.print(f"[dim]    Saved -> {output_path}[/dim]")
+
+    def process_subreddit(self, subreddit_path: str):
+        """Process a single subreddit."""
+        subreddit_name = os.path.basename(subreddit_path)
         
-        console.print(f"[green]Saved {len(opportunities)} opportunities to {output_path}[/green]")
-        
-        # Also save a CSV for easy inspection
-        csv_path = os.path.join(output_dir, "opportunities.csv")
-        df.write_csv(csv_path)
-        console.print(f"[green]Also saved CSV to {csv_path}[/green]")
-    
-    async def run(self, test_mode: bool = False, input_override: Optional[str] = None):
-        """
-        Execute the full pipeline.
-        
-        Args:
-            test_mode: If True, use limited data for testing.
-            input_override: Override input directory path.
-        """
-        console.rule("[bold blue]Phase 4: AI-Powered Aggregation & Business Plan Generation[/bold blue]")
-        
-        # Override input if specified
-        if input_override:
-            self.input_dir = input_override
-        
-        # Step 1: Find input files
-        console.print("\n[bold]Step 1: Finding input files[/bold]")
-        input_files = self.find_input_files()
-        
-        if not input_files:
-            console.print("[red]No input files found. Exiting.[/red]")
+        files = self.get_parquet_files(subreddit_path)
+        if not files:
+            # console.print(f"[dim]  No parquet files in {subreddit_name}, skipping[/dim]")
             return
-        
-        # Step 2: Load data
-        console.print("\n[bold]Step 2: Loading data[/bold]")
-        df = self.load_data(input_files)
-        
+
+        df = self.load_data(files)
         if df.height == 0:
-            console.print("[red]No data loaded. Exiting.[/red]")
             return
-        
-        # Limit data in test mode
-        if test_mode:
-            df = df.head(100)
-            console.print(f"[yellow]Test mode: Limited to {df.height} rows[/yellow]")
-        
-        # Step 3: Extract texts
-        console.print("\n[bold]Step 3: Extracting texts[/bold]")
+
         texts, df_filtered = self.extract_texts(df)
-        
         if len(texts) < MIN_CLUSTER_SIZE:
-            console.print(f"[red]Not enough texts ({len(texts)}) for clustering. Need at least {MIN_CLUSTER_SIZE}.[/red]")
+            # console.print(f"[dim]  Not enough texts in {subreddit_name} ({len(texts)}), skipping[/dim]")
             return
+
+        console.print(f"  Processing [bold cyan]{subreddit_name}[/bold cyan] ({len(texts)} items)...")
         
-        # Step 4: Embed texts
-        console.print("\n[bold]Step 4: Generating embeddings[/bold]")
         embeddings = self.embedder.embed(texts)
-        console.print(f"[green]Generated embeddings with shape: {embeddings.shape}[/green]")
-        
-        # Step 5: Cluster embeddings
-        console.print("\n[bold]Step 5: Clustering[/bold]")
+        if len(embeddings) == 0:
+            return
+
         cluster_labels = self.clusterer.cluster(embeddings)
         
-        # Step 6: Build opportunities
-        console.print("\n[bold]Step 6: Building opportunities[/bold]")
-        opportunities = self.build_opportunities(df_filtered, texts, cluster_labels)
+        # Stats
+        n_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
         
-        if not opportunities:
-            console.print("[yellow]No valid opportunities found after clustering.[/yellow]")
-            return
-        
-        # Step 7: Generate summaries and business plans
-        console.print("\n[bold]Step 7: AI-Powered Generation (Gemini)[/bold]")
-        
-        # Check if API key is available
-        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            console.print("[yellow]Warning: No Gemini API key found. Skipping AI generation.[/yellow]")
-            console.print("[yellow]Set GOOGLE_API_KEY or GEMINI_API_KEY to enable.[/yellow]")
+        if n_clusters > 0:
+             opportunities = self.build_opportunities(df_filtered, texts, cluster_labels)
+             self.save_results(opportunities, subreddit_path)
+             console.print(f"    Found [green]{n_clusters} clusters[/green]")
         else:
-            opportunities = await self.generator.process_opportunities(opportunities)
-        
-        # Step 8: Save results
-        console.print("\n[bold]Step 8: Saving results[/bold]")
-        self.save_results(opportunities)
-        
-        # Summary
-        console.rule("[bold green]Pipeline Complete[/bold green]")
-        
-        summary_table = Table(title="Results Summary")
-        summary_table.add_column("Metric", style="cyan")
-        summary_table.add_column("Value", style="green")
-        summary_table.add_row("Total texts processed", str(len(texts)))
-        summary_table.add_row("Clusters found", str(len(opportunities)))
-        summary_table.add_row("Noise points", str(list(cluster_labels).count(-1)))
-        summary_table.add_row("Output directory", self.output_dir)
-        console.print(summary_table)
+             console.print(f"[dim]    No clusters found[/dim]")
 
+    def run(self, subreddit_arg: Optional[str] = None):
+        """Run the pipeline."""
+        console.rule("[bold blue]Phase 4: Clustering[/bold blue]")
+        console.print(f"Input: {CHAINS_INPUT_DIR}")
+        console.print(f"Output: {CLUSTERS_OUTPUT_DIR}")
+
+        # Ensure embedding model is loaded once
+        self.embedder.load_model()
+
+        if subreddit_arg:
+             # Single subreddit mode logic
+             target_path = None
+             
+             # Try to find it by scanning suffix dirs
+             # This assumes standard 2-digit hex suffix (00-ff) or just 2-digit numeric if that was the scheme
+             # Rust code uses suffix, let's just check standard range
+             # Actually, scanning is safer than guessing if we don't know the exact hash
+             
+             # Check if input dir exists
+             if not os.path.exists(CHAINS_INPUT_DIR):
+                 console.print(f"[red]Input directory not found: {CHAINS_INPUT_DIR}[/red]")
+                 return
+
+             # 1. Check direct child
+             potential = os.path.join(CHAINS_INPUT_DIR, subreddit_arg)
+             if os.path.exists(potential):
+                target_path = potential
+             else:
+                # 2. Search in subdirectories
+                console.print(f"[dim]Searching for {subreddit_arg}...[/dim]")
+                for root, dirs, files in os.walk(CHAINS_INPUT_DIR):
+                    if subreddit_arg in dirs:
+                        target_path = os.path.join(root, subreddit_arg)
+                        break
+            
+             if target_path:
+                 self.process_subreddit(target_path)
+             else:
+                 console.print(f"[red]Subreddit {subreddit_arg} not found in {CHAINS_INPUT_DIR}[/red]")
+             return
+
+        # Load or scan subreddits
+        subreddits = load_subreddits_list()
+        if not subreddits:
+            subreddits = scan_subreddits(CHAINS_INPUT_DIR)
+            if subreddits:
+                save_subreddits_list(subreddits)
+
+        if not subreddits:
+            console.print("[red]No subreddits found to process.[/red]")
+            return
+
+        # Load progress
+        progress_data = load_progress()
+        start_index = progress_data.get("subreddit_index", 0)
+
+        console.print(f"Total subreddits: {len(subreddits)}")
+        console.print(f"Resuming from index: {start_index}")
+
+        # Process loop
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.pos}/{task.total} ({task.percentage:.0f}%)"),
+            TimeElapsedColumn(),
+            console=console
+        ) as progress:
+            task = progress.add_task("Clustering...", total=len(subreddits), completed=start_index)
+            
+            for i in range(start_index, len(subreddits)):
+                subreddit_path = subreddits[i]
+                
+                # Update progress display
+                progress.update(task, description=f"Processing {os.path.basename(subreddit_path)}")
+                
+                try:
+                    self.process_subreddit(subreddit_path)
+                except Exception as e:
+                    console.print(f"[red]Error processing {subreddit_path}: {e}[/red]")
+                
+                # Save progress
+                save_progress(i + 1)
+                progress.advance(task)
+        
+        console.rule("[bold green]Phase 4 Complete[/bold green]")
 
 # -----------------------------------------------------------------------------
 # Main Entry Point
 # -----------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Phase 4: AI-Powered Aggregation & Business Plan Generation"
-    )
-    parser.add_argument(
-        "--test-mode", "-t",
-        action="store_true",
-        help="Run in test mode with limited data"
-    )
-    parser.add_argument(
-        "--input", "-i",
-        type=str,
-        default=None,
-        help="Override input directory path"
-    )
-    parser.add_argument(
-        "--output", "-o",
-        type=str,
-        default=None,
-        help="Override output directory path"
-    )
-    
+    parser = argparse.ArgumentParser(description="Phase 4: Clustering")
+    parser.add_argument("--subreddit", type=str, help="Process a specific subreddit only")
     args = parser.parse_args()
     
-    pipeline = Pipeline(
-        input_dir=args.input,
-        output_dir=args.output
-    )
-    
-    asyncio.run(pipeline.run(test_mode=args.test_mode, input_override=args.input))
-
+    pipeline = Pipeline()
+    pipeline.run(subreddit_arg=args.subreddit)
 
 if __name__ == "__main__":
     main()

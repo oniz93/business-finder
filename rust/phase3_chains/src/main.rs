@@ -278,7 +278,7 @@ fn process_subreddit(subreddit_path: &PathBuf) -> Result<()> {
     let memory_limit = (total_mem as f64 * 0.9) as u64;
     let memory_limit_gb = memory_limit as f64 / 1024.0 / 1024.0 / 1024.0;
     
-    info!("  System memory: {} bytes. Setting DuckDB memory limit to {:.2} GB", total_mem, memory_limit_gb);
+    // info!("  System memory: {} bytes. Setting DuckDB memory limit to {:.2} GB", total_mem, memory_limit_gb);
     
     conn.execute(&format!("PRAGMA memory_limit='{}B'", memory_limit), [])
         .context("Failed to set memory limit")?;
@@ -327,6 +327,11 @@ fn process_subreddit(subreddit_path: &PathBuf) -> Result<()> {
             }
         }
     }
+
+    // Create an index on 'id' to speed up chain traversal
+    info!("  Creating index on message IDs...");
+    conn.execute("CREATE INDEX idx_messages_id ON messages(id)", [])
+        .context("Failed to create index on id")?;
 
     // Get total count of ideas
     let idea_count: i64 = conn

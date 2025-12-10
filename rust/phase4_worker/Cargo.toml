@@ -1,0 +1,25 @@
+[package]
+name = "phase4_worker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# ONNX Runtime (matching phase2_consumer)
+ort = { version = "2.0.0-rc.4", features = ["ndarray", "download-binaries"] } 
+tokenizers = { version = "0.15", features = ["onig"] }
+
+# Data handling
+polars = { version = "0.37.0", features = ["lazy", "parquet"] }
+ndarray = "0.15"
+
+# Redis
+redis = { version = "0.25.0", features = ["json", "tls-native-tls"] }
+
+# Utilities
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+log = "0.4"
+env_logger = "0.11.8"
+indicatif = "0.17"
+ctrlc = "3.4"
