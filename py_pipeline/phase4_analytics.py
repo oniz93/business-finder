@@ -115,9 +115,10 @@ def save_subreddits_list(subreddits: List[str]):
 
 def scan_subreddits(base_path: str) -> List[str]:
     """
-    Scan for subreddit directories in the chains input directory.
-    Uses the suffix structure if present (e.g. chains/01/NeedIdea).
-    Mirrors the logic in Rust Phase 3 to find valid input directories.
+    Scan for subreddit directories in the input directory.
+    Handles both:
+    1. Partitioned structure: prefix/subreddit (e.g., 'ap/apple', '00/AskReddit')
+    2. Flat structure: /subreddit (e.g., '/AskReddit')
     """
     base = Path(base_path)
     if not base.exists():
@@ -133,24 +134,38 @@ def scan_subreddits(base_path: str) -> List[str]:
         console.print(f"[red]Error reading directory: {e}[/red]")
         return []
 
-    # Heuristic: if items are mostly 2 digit numbers, assume suffix structure from Phase 3
-    suffix_dirs = [x for x in items if x.is_dir() and x.name.isdigit() and len(x.name) == 2]
-    
-    if len(suffix_dirs) > 0:
-        console.print(f"[blue]Found {len(suffix_dirs)} suffix directories. Scanning recursively...[/blue]")
-        for suffix in sorted(suffix_dirs):
+    for item in items:
+        if not item.is_dir():
+            continue
+            
+        # Check if it's a partition directory (short name, usually 2 chars)
+        # AND it does NOT contain parquet files directly (which would mean it's a subreddit)
+        is_partition = False
+        if len(item.name) <= 2:
+            # Check content to be sure
             try:
-                subs = [x for x in suffix.iterdir() if x.is_dir()]
-                for sub in subs:
-                    subreddits.append(str(sub))
+                # If it has specific subdirectories, treat as partition
+                # If it has parquet files, treat as subreddit
+                has_parquet = any(x.name.endswith('.parquet') for x in item.iterdir())
+                if not has_parquet:
+                    is_partition = True
+            except OSError:
+                pass
+        
+        if is_partition:
+            # Scan inside the partition
+            try:
+                subs = [str(x) for x in item.iterdir() if x.is_dir()]
+                if subs:
+                    subreddits.extend(subs)
             except OSError:
                 continue
-    else:
-        # Flat structure fallback
-        console.print("[blue]Assuming flat directory structure...[/blue]")
-        subreddits = [str(x) for x in items if x.is_dir()]
+        else:
+            # Treat as a subreddit directly
+            subreddits.append(str(item))
 
-    subreddits.sort()
+    # Remove duplicates
+    subreddits = sorted(list(set(subreddits)))
     console.print(f"[green]✓ Found {len(subreddits)} subreddit directories[/green]")
     return subreddits
 

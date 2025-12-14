@@ -24,6 +24,9 @@ import numpy as np
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="sklearn")
+
 # Add project root for config
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -49,18 +52,18 @@ EMBEDDING_DIM = 384
 
 
 @dataclass
-class Progress:
+class ClusterProgress:
     subreddit_index: int = 0
     
     def to_dict(self):
         return {"subreddit_index": self.subreddit_index}
     
     @classmethod
-    def from_dict(cls, data: dict) -> 'Progress':
+    def from_dict(cls, data: dict) -> 'ClusterProgress':
         return cls(subreddit_index=data.get("subreddit_index", 0))
 
 
-def save_progress(progress: Progress):
+def save_progress(progress: ClusterProgress):
     """Save progress to checkpoint file."""
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     path = os.path.join(CHECKPOINT_DIR, PROGRESS_FILE)
@@ -68,16 +71,16 @@ def save_progress(progress: Progress):
         json.dump(progress.to_dict(), f, indent=2)
 
 
-def load_progress() -> Progress:
+def load_progress() -> ClusterProgress:
     """Load progress from checkpoint file."""
     path = os.path.join(CHECKPOINT_DIR, PROGRESS_FILE)
     if os.path.exists(path):
         try:
             with open(path, 'r') as f:
-                return Progress.from_dict(json.load(f))
+                return ClusterProgress.from_dict(json.load(f))
         except Exception as e:
             console.print(f"[yellow]Failed to load progress: {e}[/yellow]")
-    return Progress()
+    return ClusterProgress()
 
 
 def save_subreddits_list(subreddits: List[str]):
@@ -101,7 +104,12 @@ def load_subreddits_list() -> Optional[List[str]]:
 
 
 def scan_subreddits(base_path: str) -> List[str]:
-    """Scan for subreddit directories in the embeddings directory."""
+    """
+    Scan for subreddit directories in the input directory.
+    Handles both:
+    1. Partitioned structure: prefix/subreddit (e.g., 'ap/apple', '00/AskReddit')
+    2. Flat structure: /subreddit (e.g., '/AskReddit')
+    """
     base = Path(base_path)
     if not base.exists():
         console.print(f"[red]Input directory does not exist: {base}[/red]")
@@ -116,22 +124,39 @@ def scan_subreddits(base_path: str) -> List[str]:
         console.print(f"[red]Error reading directory: {e}[/red]")
         return []
     
-    # Check for suffix directory structure (00, 01, etc.)
-    suffix_dirs = [x for x in items if x.is_dir() and x.name.isdigit() and len(x.name) == 2]
-    
-    if suffix_dirs:
-        console.print(f"[blue]Found {len(suffix_dirs)} suffix directories[/blue]")
-        for suffix in sorted(suffix_dirs):
+    for item in items:
+        if not item.is_dir():
+            continue
+            
+        # Check if it's a partition directory (short name, usually 2 chars)
+        # AND it does NOT contain parquet files directly (which would mean it's a subreddit)
+        is_partition = False
+        if len(item.name) <= 2:
+            # Check content to be sure
             try:
-                subs = [str(x) for x in suffix.iterdir() if x.is_dir()]
-                subreddits.extend(subs)
+                # If it has specific subdirectories, treat as partition
+                # If it has parquet files, treat as subreddit
+                has_parquet = any(x.name.endswith('.parquet') for x in item.iterdir())
+                if not has_parquet:
+                    is_partition = True
+            except OSError:
+                pass
+        
+        if is_partition:
+            # Scan inside the partition
+            try:
+                subs = [str(x) for x in item.iterdir() if x.is_dir()]
+                if subs:
+                    # console.print(f"[dim]  Found partition {item.name} with {len(subs)} subreddits[/dim]")
+                    subreddits.extend(subs)
             except OSError:
                 continue
-    else:
-        # Flat structure
-        subreddits = [str(x) for x in items if x.is_dir()]
-    
-    subreddits.sort()
+        else:
+            # Treat as a subreddit directly
+            subreddits.append(str(item))
+
+    # Remove duplicates if any
+    subreddits = sorted(list(set(subreddits)))
     console.print(f"[green]✓ Found {len(subreddits)} subreddit directories[/green]")
     return subreddits
 
@@ -155,6 +180,31 @@ def extract_embeddings(df: pl.DataFrame) -> np.ndarray:
     return embeddings
 
 
+def reduce_dimensions(embeddings: np.ndarray, n_components: int = 15) -> np.ndarray:
+    """Reduce dimensionality using UMAP for better density clustering."""
+    if embeddings.shape[0] < n_components + 2:
+        return embeddings
+
+    try:
+        import umap
+        # UMAP is very effective for collapsing high-dim semantic vectors
+        reducer = umap.UMAP(
+            n_components=n_components,
+            n_neighbors=15,
+            min_dist=0.0,
+            metric='cosine',
+            random_state=42,
+            n_jobs=1 
+        )
+        # Suppress UMAP chatter
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return reducer.fit_transform(embeddings)
+    except ImportError:
+        console.print("[dim]  UMAP not installed. Install 'umap-learn' for better clustering.[/dim]")
+        return embeddings
+
+
 def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:
     """Run HDBSCAN clustering on embeddings."""
     if embeddings.shape[0] == 0:
@@ -166,7 +216,8 @@ def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:
             min_cluster_size=MIN_CLUSTER_SIZE,
             min_samples=MIN_SAMPLES,
             metric="euclidean",
-            cluster_selection_method="eom"
+            cluster_selection_method="leaf",  # 'leaf' produces more granular clusters than 'eom'
+            prediction_data=False
         )
     except ImportError:
         console.print("[yellow]HDBSCAN not installed, falling back to sklearn DBSCAN[/yellow]")
@@ -213,8 +264,11 @@ def process_subreddit(subreddit_path: str):
         console.print(f"[red]  Failed to extract embeddings: {e}[/red]")
         return
     
+    # Reduce dimensionality (critical for HDBSCAN performance)
+    reduced_embeddings = reduce_dimensions(embeddings)
+
     # Cluster
-    cluster_labels = cluster_embeddings(embeddings)
+    cluster_labels = cluster_embeddings(reduced_embeddings)
     
     # Add cluster labels to dataframe
     df = df.with_columns(pl.Series("cluster_id", cluster_labels))
