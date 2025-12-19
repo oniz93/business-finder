@@ -345,25 +345,52 @@ def spawn_workers(num_workers: int, jobs_before_restart: int):
     
     processes = []
     
-    def spawn_worker(worker_id):
-        """Spawn a single worker that restarts after job limit."""
-        while not shutdown_requested:
-            # Fork a new process for memory cleanup
-            p = mp.Process(target=worker_process, args=(worker_id, jobs_before_restart))
-            p.start()
-            p.join()
-            
-            if shutdown_requested:
-                break
-            
-            if p.exitcode != 0:
-                console.print(f"[yellow]Worker {worker_id}: Process exited with code {p.exitcode}[/yellow]")
-            
-            console.print(f"[dim]Worker {worker_id}: Restarting for memory cleanup...[/dim]")
+def run_worker_manager(worker_id: int, jobs_before_restart: int):
+    """
+    Manager function for a single worker slot. 
+    It runs the actual worker, and restarts it when it exits (after job limit).
+    This must be a top-level function for multiprocessing to work on macOS.
+    """
+    # We need to re-import these or ensure they are available in the child process
+    # Global shutdown_requested will be False in the new process initially,
+    # but we can check it if we use shared memory or just rely on this process 
+    # being terminated by the parent.
     
-    # Spawn worker manager threads
+    while True: # Loop forever (restarting the worker) until terminated
+        # Fork a new process for memory cleanup
+        # We run the actual worker logic in a subprocess of THIS process
+        p = mp.Process(target=worker_process, args=(worker_id, jobs_before_restart))
+        p.start()
+        p.join()
+        
+        # Check if the worker exited because of a signal or if we should stop
+        # Since we are in a separate process, we don't strictly share the parent's shutdown flag
+        # directly without a Value/Manager. However, usually the parent sends SIGTERM 
+        # to all children. 
+        
+        # If the worker finished normally (reached job limit), we restart it.
+        # If it was interrupted, we should probably stop.
+        if p.exitcode != 0:
+            # If exit code is not 0, it might have crashed or been killed
+            console.print(f"[yellow]Worker {worker_id}: Process exited with code {p.exitcode}[/yellow]")
+            # If it was killed (negative exit code), we should probably stop the manager too
+            if p.exitcode < 0:
+                break
+        
+        console.print(f"[dim]Worker {worker_id}: Restarting for memory cleanup...[/dim]")
+
+
+def spawn_workers(num_workers: int, jobs_before_restart: int):
+    """Spawn multiple worker processes."""
+    global shutdown_requested
+    
+    console.print(f"[blue]Spawning {num_workers} worker processes...[/blue]")
+    
+    processes = []
+    
+    # Spawn worker manager processes
     for i in range(num_workers):
-        p = mp.Process(target=spawn_worker, args=(i,))
+        p = mp.Process(target=run_worker_manager, args=(i, jobs_before_restart))
         processes.append(p)
         p.start()
     
