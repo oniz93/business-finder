@@ -225,3 +225,6 @@ web/supervisord.pid
 .idea
 docker/local/nginx/certs
 web/supervisord.pid
+models
+py_pipeline/checkpoint
+rust/checkpoint

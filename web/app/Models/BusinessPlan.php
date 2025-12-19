@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Laravel\Scout\Searchable;
@@ -38,15 +39,6 @@ class BusinessPlan extends Model
     }
 
     protected $fillable = [
-        'subreddit',
-        'ids_in_cluster',
-        'texts',
-        'total_ups',
-        'total_downs',
-        'summary',
-        'cluster_id',
-        'viability_score',
-        'viability_reasoning',
         'title',
         'executive_summary',
         'problem',
@@ -57,21 +49,42 @@ class BusinessPlan extends Model
         'management_team',
         'financial_projections',
         'call_to_action',
+        'plan_id',
+        'cluster_id',
+        'subreddit',
+        'original_summary',
+        'generated_at',
+        'viability_score',
+        'viability_reasoning',
     ];
 
     protected $casts = [
-        'ids_in_cluster' => 'array',
-        'texts' => 'array',
-        'total_ups' => 'integer',
-        'total_downs' => 'integer',
-        'cluster_id' => 'integer',
-        'viability_score' => 'integer',
         'market_analysis' => 'array',
         'competition' => 'array',
-        'marketing_strategy' => 'array',
         'management_team' => 'array',
         'financial_projections' => 'array',
+        'generated_at' => 'datetime',
+        'cluster_id' => 'integer',
+        'viability_score' => 'integer',
     ];
+
+    protected function marketingStrategy(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                $decodedValue = is_string($value) ? json_decode($value, true) : $value;
+
+                if (isset($decodedValue['retention']) && is_string($decodedValue['retention'])) {
+                    $retentionArray = json_decode($decodedValue['retention'], true);
+                    if (json_last_error() === JSON_ERROR_NONE) {
+                        $decodedValue['retention'] = $retentionArray;
+                    }
+                }
+                return $decodedValue;
+            },
+        );
+    }
+
     public function collections()
     {
         return $this->belongsToMany(Collection::class, 'business_plan_collection');
