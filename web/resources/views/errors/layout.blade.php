@@ -17,6 +17,13 @@
                 margin: 0;
             }
 
+            @media (prefers-color-scheme: dark) {
+                html, body {
+                    background-color: #1a202c;
+                    color: #a0aec0;
+                }
+            }
+
             .full-height {
                 height: 100vh;
             }
