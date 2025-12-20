@@ -49,6 +49,3 @@ Route::post('/business-plan-search', [SearchController::class, 'handlePostSearch
 
 require __DIR__ . '/auth.php';
 
-use App\Http\Controllers\ThemeController;
-Route::post('/theme', [ThemeController::class, 'switchTheme'])->name('theme.switch');
-
