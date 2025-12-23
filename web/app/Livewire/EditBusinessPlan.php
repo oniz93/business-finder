@@ -11,82 +11,82 @@ class EditBusinessPlan extends Component
     public BusinessPlan $businessPlan;
 
     public $title;
-    public $summary;
     public $executive_summary;
     public $problem;
     public $solution;
-    public $viability_score;
-    public $viability_reasoning;
-    public $market_analysis_target_market;
-    public $market_analysis_market_size;
-    public $market_analysis_trends;
-    public $competition_competitors;
-    public $competition_direct_competitors;
-    public $competition_indirect_competitors;
-    public $competition_competitive_advantages;
+    public $market_analysis;
+    public $competition;
     public $marketing_strategy;
-    public $management_team_description;
-    public $management_team_roles;
-    public $financial_projections_potential_monthly_revenue;
-    public $financial_projections_revenue_streams;
-    public $financial_projections_cost_structure;
+    public $management_team;
+    public $financial_projections;
     public $call_to_action;
+    public $cluster_summary;
+    public $is_viable_business;
+    public $viability_score;
+    public $is_saas;
+    public $is_solo_entrepreneur_possible;
+    public $message_ids;
+    public $texts_combined;
+    public $total_ups;
+    public $total_downs;
+    public $message_count;
+    public $generated_plan;
+    public $generated_at;
 
-    protected $rules = [
-        'title' => 'required|string|max:255',
-        'summary' => 'required|string|max:500',
-        'executive_summary' => 'required|string',
-        'problem' => 'required|string',
-        'solution' => 'required|string',
-        'viability_score' => 'nullable|numeric',
-        'viability_reasoning' => 'nullable|string',
-        'market_analysis_target_market' => 'nullable|array',
-        'market_analysis_market_size' => 'nullable|string',
-        'market_analysis_trends' => 'nullable|array',
-        'competition_competitors' => 'nullable|array',
-        'competition_direct_competitors' => 'nullable|array',
-        'competition_indirect_competitors' => 'nullable|array',
-        'competition_competitive_advantages' => 'nullable|array',
-        'marketing_strategy' => 'nullable|array',
-        'management_team_description' => 'nullable|string',
-        'management_team_roles' => 'nullable|array',
-        'financial_projections_potential_monthly_revenue' => 'nullable|string',
-        'financial_projections_revenue_streams' => 'nullable|array',
-        'financial_projections_cost_structure' => 'nullable|array',
-        'call_to_action' => 'nullable|string',
-    ];
+
+    protected function rules()
+    {
+        return [
+            'title' => 'required|string|max:255',
+            'executive_summary' => 'required|string',
+            'problem' => 'required|string',
+            'solution' => 'required|string',
+            'market_analysis' => 'nullable|array',
+            'competition' => 'nullable|array',
+            'marketing_strategy' => 'nullable|array',
+            'management_team' => 'nullable|array',
+            'financial_projections' => 'nullable|array',
+            'call_to_action' => 'nullable|string',
+            'cluster_summary' => 'nullable|string',
+            'is_viable_business' => 'nullable|boolean',
+            'viability_score' => 'nullable|integer',
+            'is_saas' => 'nullable|boolean',
+            'is_solo_entrepreneur_possible' => 'nullable|boolean',
+            'message_ids' => 'nullable|array',
+            'texts_combined' => 'nullable|string',
+            'total_ups' => 'nullable|integer',
+            'total_downs' => 'nullable|integer',
+            'message_count' => 'nullable|integer',
+            'generated_plan' => 'nullable|string',
+            'generated_at' => 'nullable|date',
+        ];
+    }
 
     public function mount(BusinessPlan $businessPlan)
     {
         $this->businessPlan = $businessPlan;
         $this->title = $businessPlan->title;
-        $this->summary = $businessPlan->summary;
         $this->executive_summary = $businessPlan->executive_summary;
         $this->problem = $businessPlan->problem;
         $this->solution = $businessPlan->solution;
-        $this->viability_score = $businessPlan->viability_score;
-        $this->viability_reasoning = $businessPlan->viability_reasoning;
-
-        // Handle JSON fields
-        $this->market_analysis_target_market = $businessPlan->market_analysis['target_market'] ?? [];
-        $this->market_analysis_market_size = $businessPlan->market_analysis['market_size'] ?? '';
-        $this->market_analysis_trends = $businessPlan->market_analysis['trends'] ?? [];
-
-        $this->competition_competitors = $businessPlan->competition['competitors'] ?? [];
-        $this->competition_direct_competitors = $businessPlan->competition['direct_competitors'] ?? [];
-        $this->competition_indirect_competitors = $businessPlan->competition['indirect_competitors'] ?? [];
-        $this->competition_competitive_advantages = $businessPlan->competition['competitive_advantages'] ?? [];
-
-        $this->marketing_strategy = $businessPlan->marketing_strategy ?? [];
-
-        $this->management_team_description = $businessPlan->management_team['description'] ?? '';
-        $this->management_team_roles = $businessPlan->management_team['roles'] ?? [];
-
-        $this->financial_projections_potential_monthly_revenue = $businessPlan->financial_projections['potential_monthly_revenue'] ?? '';
-        $this->financial_projections_revenue_streams = $businessPlan->financial_projections['revenue_streams'] ?? [];
-        $this->financial_projections_cost_structure = $businessPlan->financial_projections['cost_structure'] ?? [];
-
+        $this->market_analysis = $businessPlan->market_analysis;
+        $this->competition = $businessPlan->competition;
+        $this->marketing_strategy = $businessPlan->marketing_strategy;
+        $this->management_team = $businessPlan->management_team;
+        $this->financial_projections = $businessPlan->financial_projections;
         $this->call_to_action = $businessPlan->call_to_action;
+        $this->cluster_summary = $businessPlan->cluster_summary;
+        $this->is_viable_business = $businessPlan->is_viable_business;
+        $this->viability_score = $businessPlan->viability_score;
+        $this->is_saas = $businessPlan->is_saas;
+        $this->is_solo_entrepreneur_possible = $businessPlan->is_solo_entrepreneur_possible;
+        $this->message_ids = $businessPlan->message_ids;
+        $this->texts_combined = $businessPlan->texts_combined;
+        $this->total_ups = $businessPlan->total_ups;
+        $this->total_downs = $businessPlan->total_downs;
+        $this->message_count = $businessPlan->message_count;
+        $this->generated_plan = $businessPlan->generated_plan;
+        $this->generated_at = $businessPlan->generated_at;
     }
 
     public function save()
@@ -95,34 +95,27 @@ class EditBusinessPlan extends Component
 
         $this->businessPlan->update([
             'title' => $this->title,
-            'summary' => $this->summary,
             'executive_summary' => $this->executive_summary,
             'problem' => $this->problem,
             'solution' => $this->solution,
-            'viability_score' => $this->viability_score,
-            'viability_reasoning' => $this->viability_reasoning,
-            'market_analysis' => [
-                'target_market' => $this->market_analysis_target_market,
-                'market_size' => $this->market_analysis_market_size,
-                'trends' => $this->market_analysis_trends,
-            ],
-            'competition' => [
-                'competitors' => $this->competition_competitors,
-                'direct_competitors' => $this->competition_direct_competitors,
-                'indirect_competitors' => $this->competition_indirect_competitors,
-                'competitive_advantages' => $this->competition_competitive_advantages,
-            ],
+            'market_analysis' => $this->market_analysis,
+            'competition' => $this->competition,
             'marketing_strategy' => $this->marketing_strategy,
-            'management_team' => [
-                'description' => $this->management_team_description,
-                'roles' => $this->management_team_roles,
-            ],
-            'financial_projections' => [
-                'potential_monthly_revenue' => $this->financial_projections_potential_monthly_revenue,
-                'revenue_streams' => $this->financial_projections_revenue_streams,
-                'cost_structure' => $this->financial_projections_cost_structure,
-            ],
+            'management_team' => $this->management_team,
+            'financial_projections' => $this->financial_projections,
             'call_to_action' => $this->call_to_action,
+            'cluster_summary' => $this->cluster_summary,
+            'is_viable_business' => $this->is_viable_business,
+            'viability_score' => $this->viability_score,
+            'is_saas' => $this->is_saas,
+            'is_solo_entrepreneur_possible' => $this->is_solo_entrepreneur_possible,
+            'message_ids' => $this->message_ids,
+            'texts_combined' => $this->texts_combined,
+            'total_ups' => $this->total_ups,
+            'total_downs' => $this->total_downs,
+            'message_count' => $this->message_count,
+            'generated_plan' => $this->generated_plan,
+            'generated_at' => $this->generated_at,
         ]);
 
         session()->flash('message', 'Business plan updated successfully!');

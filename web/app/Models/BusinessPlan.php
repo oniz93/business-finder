@@ -35,6 +35,8 @@ class BusinessPlan extends Model
             'competition' => $this->competition,
             'marketing_strategy' => $this->marketing_strategy,
             'call_to_action' => $this->call_to_action,
+            'cluster_summary' => $this->cluster_summary,
+            'texts_combined' => $this->texts_combined,
         ];
     }
 
@@ -52,10 +54,18 @@ class BusinessPlan extends Model
         'plan_id',
         'cluster_id',
         'subreddit',
-        'original_summary',
-        'generated_at',
+        'cluster_summary',
+        'is_viable_business',
         'viability_score',
-        'viability_reasoning',
+        'is_saas',
+        'is_solo_entrepreneur_possible',
+        'message_ids',
+        'texts_combined',
+        'total_ups',
+        'total_downs',
+        'message_count',
+        'generated_plan',
+        'generated_at',
     ];
 
     protected $casts = [
@@ -66,6 +76,13 @@ class BusinessPlan extends Model
         'generated_at' => 'datetime',
         'cluster_id' => 'integer',
         'viability_score' => 'integer',
+        'is_viable_business' => 'boolean',
+        'is_saas' => 'boolean',
+        'is_solo_entrepreneur_possible' => 'boolean',
+        'message_ids' => 'array',
+        'total_ups' => 'integer',
+        'total_downs' => 'integer',
+        'message_count' => 'integer',
     ];
 
     protected function marketingStrategy(): Attribute

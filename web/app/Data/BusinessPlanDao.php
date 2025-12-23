@@ -112,15 +112,15 @@ class BusinessPlanDao
                                 'query' => $searchParams['search'],
                                 'fields' => [
                                     'title',
-                                    'summary',
                                     'executive_summary',
                                     'problem',
                                     'solution',
                                     'market_analysis',
                                     'competition',
                                     'marketing_strategy',
-                                    'viability_reasoning',
                                     'call_to_action',
+                                    'cluster_summary',
+                                    'texts_combined',
                                 ],
                                 'default_operator' => 'OR',
                             ],
@@ -131,6 +131,18 @@ class BusinessPlanDao
         $filters = [];
         if (!empty($searchParams['subreddit'])) {
             $filters[] = ['match' => ['subreddit' => $searchParams['subreddit']]];
+        }
+
+        if (isset($searchParams['is_viable_business']) && $searchParams['is_viable_business'] !== '') {
+            $filters[] = ['match' => ['is_viable_business' => $searchParams['is_viable_business']]];
+        }
+
+        if (isset($searchParams['is_saas']) && $searchParams['is_saas'] !== '') {
+            $filters[] = ['match' => ['is_saas' => $searchParams['is_saas']]];
+        }
+
+        if (isset($searchParams['is_solo_entrepreneur_possible']) && $searchParams['is_solo_entrepreneur_possible'] !== '') {
+            $filters[] = ['match' => ['is_solo_entrepreneur_possible' => $searchParams['is_solo_entrepreneur_possible']]];
         }
 
         $viabilityRange = [];
