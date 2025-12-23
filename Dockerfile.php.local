@@ -11,7 +11,8 @@ RUN apk add --no-cache \
     freetype-dev \
     oniguruma-dev \
     libxml2-dev \
-    supervisor
+    supervisor \
+    linux-headers
 
 # Install PHP extensions
 RUN docker-php-source extract
@@ -29,8 +30,13 @@ RUN docker-php-ext-install xml
 RUN docker-php-ext-install zip
 RUN docker-php-source delete
 
-# Install redis extension
-RUN apk add --no-cache autoconf && pecl install redis && docker-php-ext-enable redis
+# Install redis extension and xdebug
+RUN apk add --no-cache autoconf \
+    && pecl install redis xdebug \
+    && docker-php-ext-enable redis xdebug
+
+# Configure Xdebug
+COPY docker/local/xdebug.ini /usr/local/etc/php/conf.d/xdebug.ini
 
 # Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

@@ -30,6 +30,8 @@ services:
       context: .
       dockerfile: Dockerfile.php.local
     container_name: business-finder-php
+    ports:
+      - "19009:9009"
     volumes:
       - ./web:/var/www/html
     networks:
@@ -79,7 +81,7 @@ services:
     image: redis:alpine
     container_name: business-finder-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - ./data/redis:/data
     healthcheck:
