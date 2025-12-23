@@ -12,7 +12,7 @@ use Spatie\Activitylog\LogOptions;
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, LogsActivity;
+    use HasFactory, Notifiable; //, LogsActivity;
 
     protected static $logAttributes = ['name', 'email'];
 
