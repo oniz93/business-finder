@@ -119,7 +119,7 @@ class EditBusinessPlan extends Component
         ]);
 
         session()->flash('message', 'Business plan updated successfully!');
-        return redirect()->route('business-plan', $this->businessPlan->id);
+        return redirect()->to('/business-plans/' . $this->businessPlan->id);
     }
 
     public function render()

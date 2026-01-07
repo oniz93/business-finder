@@ -2,8 +2,7 @@
     <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6">Advanced Business Plan Search</h1>
 
     @persist('business-plan-search-results')
-    <form method="POST" action="{{ route('business-plan-search.post') }}">
-        @csrf
+    <form method="GET" action="{{ route('business-plan-search.index') }}">
         <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-xl sm:rounded-lg mb-8 p-6">
             <div class="mb-4">
                 <label for="search" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Search</label>
@@ -55,7 +54,7 @@
                     <h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">{{ $plan->title }}</h2>
                     <p class="text-gray-600 dark:text-gray-400">{{ $plan->summary }}</p>
                     <div class="mt-4 flex justify-end">
-                        <a href="{{ route('business-plan', $plan->id) }}" wire:navigate class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        <a href="/business-plans/{{ $plan->id }}" wire:navigate class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                             View Details
                         </a>
                     </div>

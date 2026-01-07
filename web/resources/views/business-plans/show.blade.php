@@ -17,16 +17,16 @@
 
             @auth
                 <div class="mb-6 flex justify-end space-x-4">
-                    <a href="{{ route('business-plans.canvas', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                    <a href="/business-plans/{{ $plan->id }}/canvas" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
                         View Canvas
                     </a>
-                    <a href="{{ route('business-plans.pitch-deck', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+                    <a href="/business-plans/{{ $plan->id }}/pitch-deck" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
                         View Pitch Deck
                     </a>
-                    <a href="{{ route('business-plans.financial-projections', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                    <a href="/business-plans/{{ $plan->id }}/financial-projections" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
                         Financial Projections
                     </a>
-                    <a href="{{ route('business-plans.edit', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    <a href="/business-plans/{{ $plan->id }}/edit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                         Edit Business Plan
                     </a>
                     <button onclick="Livewire.dispatchTo('save-to-collection-modal', 'openModal', { businessPlanId: {{ $plan->id }} })" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
@@ -192,33 +192,7 @@
                 </div>
             </div>
 
-            <!-- Management Team -->
-            <div class="mb-8 bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
-                <div class="bg-gradient-to-r from-teal-500 to-green-600 p-6">
-                    <div class="flex items-center">
-                        <svg class="w-7 h-7 text-white mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
-                        </svg>
-                        <h3 class="text-2xl font-bold text-white">Management Team</h3>
-                    </div>
-                </div>
-                <div class="p-8">
-                    <div class="prose prose-invert max-w-none text-gray-700 dark:text-gray-300 leading-relaxed mb-6">{!! Str::markdown($plan->management_team['description'] ?? '') !!}</div>
 
-                    <h4 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
-                        <span class="w-2 h-2 bg-teal-500 rounded-full mr-2"></span>
-                        Key Roles
-                    </h4>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        @foreach($plan->management_team['roles'] as $role)
-                            <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border-l-4 border-teal-500">
-                                <h5 class="font-bold text-gray-900 dark:text-white mb-2 prose prose-invert max-w-none">{!! Str::markdown($role['role'] ?? '') !!}</h5>
-                                <div class="prose prose-invert max-w-none text-sm text-gray-600 dark:text-gray-400">{!! Str::markdown($role['description'] ?? '') !!}</div>
-                            </div>
-                        @endforeach
-                    </div>
-                </div>
-            </div>
 
             <!-- Financial Projections -->
             <div class="mb-8 bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
@@ -272,7 +246,7 @@
                         <svg x-show="open" class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
                     </div>
                     <div x-show="open" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 transform scale-90" x-transition:enter-end="opacity-100 transform scale-100" x-transition:leave="transition ease-in duration-300" x-transition:leave-start="opacity-100 transform scale-100" x-transition:leave-end="opacity-0 transform scale-90" class="mt-4 p-4 bg-gray-700 rounded-lg">
-                        <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-8">
+                        <dl class="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-8">
                             <div class="sm:col-span-1">
                                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Subreddit</dt>
                                 <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ $plan->subreddit }}</dd>
@@ -281,11 +255,64 @@
                                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Cluster ID</dt>
                                 <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ $plan->cluster_id }}</dd>
                             </div>
-                            <div class="sm:col-span-2">
-                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Original Summary</dt>
-                                <dd class="mt-1 text-base text-gray-900 dark:text-white prose prose-invert max-w-none">{!! Str::markdown($plan->original_summary ?? '') !!}</dd>
+                            <div class="sm:col-span-1">
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Message Count</dt>
+                                <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ $plan->message_count }}</dd>
                             </div>
-                        </div>
+
+                            <div class="sm:col-span-1">
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Viable Business?</dt>
+                                <dd class="mt-1 text-lg font-semibold {{ $plan->is_viable_business ? 'text-green-400' : 'text-red-400' }}">
+                                    {{ $plan->is_viable_business ? 'Yes' : 'No' }}
+                                </dd>
+                            </div>
+                            <div class="sm:col-span-1">
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Viability Score</dt>
+                                <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ $plan->viability_score }}/10</dd>
+                            </div>
+                            <div class="sm:col-span-1">
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">SaaS?</dt>
+                                <dd class="mt-1 text-lg font-semibold {{ $plan->is_saas ? 'text-blue-400' : 'text-gray-400' }}">
+                                    {{ $plan->is_saas ? 'Yes' : 'No' }}
+                                </dd>
+                            </div>
+
+                            <div class="sm:col-span-1">
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Solo Entrepreneur?</dt>
+                                <dd class="mt-1 text-lg font-semibold {{ $plan->is_solo_entrepreneur_possible ? 'text-green-400' : 'text-yellow-400' }}">
+                                    {{ $plan->is_solo_entrepreneur_possible ? 'Yes' : 'No' }}
+                                </dd>
+                            </div>
+                            <div class="sm:col-span-1">
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Ups</dt>
+                                <dd class="mt-1 text-lg font-semibold text-green-400">{{ $plan->total_ups }}</dd>
+                            </div>
+                            <div class="sm:col-span-1">
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Downs</dt>
+                                <dd class="mt-1 text-lg font-semibold text-red-400">{{ $plan->total_downs }}</dd>
+                            </div>
+
+                            <div class="sm:col-span-3">
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Cluster Summary</dt>
+                                <dd class="mt-1 text-base text-gray-900 dark:text-white prose prose-invert max-w-none bg-gray-600 rounded p-3">
+                                    {!! Str::markdown($plan->cluster_summary ?? 'No summary available.') !!}
+                                </dd>
+                            </div>
+
+                            <div class="sm:col-span-3">
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Original Cluster Texts (Combined)</dt>
+                                <dd class="mt-1 text-xs text-gray-300 font-mono bg-gray-900 p-4 rounded-lg max-h-64 overflow-y-auto whitespace-pre-wrap">
+                                    {{ $plan->texts_combined }}
+                                </dd>
+                            </div>
+
+                            <div class="sm:col-span-3">
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Message IDs</dt>
+                                <dd class="mt-1 text-xs text-gray-400 break-all">
+                                    {{ is_array($plan->message_ids) ? implode(', ', $plan->message_ids) : $plan->message_ids }}
+                                </dd>
+                            </div>
+                        </dl>
                     </div>
                 @endif
 

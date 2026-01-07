@@ -5,27 +5,23 @@
             <div class="flex">
                 <!-- Logo -->
                 <div class="shrink-0 flex items-center">
-                    <a href="{{ route('dashboard') }}">
+                    <a href="/">
                         <x-application-logo class="block h-9 w-auto fill-current text-gray-200" />
                     </a>
                 </div>
 
                 <!-- Navigation Links -->
                 <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                    <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" class="text-gray-300 hover:text-white">
-                        {{ __('Dashboard') }}
+                    <x-nav-link href="/" :active="request()->is('/')" class="text-gray-300 hover:text-white">
+                        {{ __('Home') }}
+                    </x-nav-link>
+                    <x-nav-link :href="route('business-plan-search.index')" :active="request()->routeIs('business-plan-search.index')" class="text-gray-300 hover:text-white">
+                        {{ __('Search') }}
                     </x-nav-link>
                 </div>
             </div>
 
             <div class="hidden sm:flex sm:items-center sm:ms-6">
-                 <!-- Search -->
-                <form action="{{ route('business-plan-search.post') }}" method="POST" class="flex items-center mr-6">
-                    @csrf
-                    <input type="text" name="search" placeholder="Search..." class="px-2 py-1 border border-gray-600 rounded-md text-sm bg-gray-900 text-gray-100 focus:border-indigo-500 focus:ring-indigo-500">
-                    <button type="submit" class="ml-2 px-3 py-1 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-700">Search</button>
-                </form>
-
                 <!-- Settings Dropdown -->
                 @auth
                     <x-dropdown align="right" width="48">
@@ -59,6 +55,14 @@
                         </x-slot>
                     </x-dropdown>
                 @endauth
+                @guest
+                    <a href="{{ route('login') }}" class="px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-400 bg-gray-800 hover:text-gray-300 focus:outline-none transition ease-in-out duration-150">
+                        {{ __('Log in') }}
+                    </a>
+                    <a href="{{ route('register') }}" class="ms-4 inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-400 bg-gray-800 hover:text-gray-300 focus:outline-none transition ease-in-out duration-150">
+                        {{ __('Register') }}
+                    </a>
+                @endguest
             </div>
 
             <!-- Hamburger -->
@@ -75,16 +79,12 @@
 
     <!-- Responsive Navigation Menu -->
     <div :class="{'block': open, 'hidden': ! open}" class="hidden sm:hidden bg-gray-800">
-        <div class="px-4 pt-4 pb-2">
-            <form action="{{ route('business-plan-search.post') }}" method="POST" class="flex">
-                @csrf
-                <input type="text" name="search" placeholder="Search..." class="w-full px-3 py-2 border border-gray-600 rounded-md text-sm bg-gray-900 text-gray-100 focus:border-indigo-500 focus:ring-indigo-500">
-                <button type="submit" class="ml-2 px-4 py-2 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-700">Go</button>
-            </form>
-        </div>
         <div class="pt-2 pb-3 space-y-1">
-            <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" class="text-gray-300 hover:bg-gray-700 hover:text-white">
-                {{ __('Dashboard') }}
+            <x-responsive-nav-link href="/" :active="request()->is('/')" class="text-gray-300 hover:bg-gray-700 hover:text-white">
+                {{ __('Home') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('business-plan-search.index')" :active="request()->routeIs('business-plan-search.index')" class="text-gray-300 hover:bg-gray-700 hover:text-white">
+                {{ __('Search') }}
             </x-responsive-nav-link>
         </div>
 

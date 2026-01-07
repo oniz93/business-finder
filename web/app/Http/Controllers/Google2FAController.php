@@ -67,12 +67,12 @@ class Google2FAController extends Controller
         ]);
 
         if (session(Constants::SESSION_AUTH_PASSED)) {
-            return redirect('/dashboard');
+            return redirect()->route('home');
         }
 
         if ($this->google2fa->verifyKey(auth()->user()->google2fa_secret, $request->otp)) {
             session([Constants::SESSION_AUTH_PASSED => true]);
-            return redirect('/dashboard');
+            return redirect()->route('home');
         }
 
         return redirect()->route('2fa.verify')->with('error', 'Invalid OTP');
