@@ -5,23 +5,23 @@
                 <h1 class="text-4xl font-bold mb-4">{{ $plan->title }}</h1>
                 <p class="text-gray-400 text-lg mb-6">{{ $plan->summary }}</p>
 
-                <div class="mb-6 flex justify-end space-x-4">
-                    <a href="{{ route('business-plans.canvas', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                        View Canvas
-                    </a>
-                    <a href="{{ route('business-plans.pitch-deck', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
-                        View Pitch Deck
-                    </a>
-                    <a href="{{ route('business-plans.financial-projections', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
-                        Financial Projections
-                    </a>
-                    <a href="{{ route('business-plans.edit', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                        Edit Business Plan
-                    </a>
-                    <button wire:click="$dispatchTo('save-to-collection-modal', 'openModal', { businessPlanId: {{ $plan->id }} })" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        Save to Collection
-                    </button>
-                </div>
+{{--                <div class="mb-6 flex justify-end space-x-4">--}}
+{{--                    <a href="{{ route('business-plans.canvas', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">--}}
+{{--                        View Canvas--}}
+{{--                    </a>--}}
+{{--                    <a href="{{ route('business-plans.pitch-deck', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">--}}
+{{--                        View Pitch Deck--}}
+{{--                    </a>--}}
+{{--                    <a href="{{ route('business-plans.financial-projections', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">--}}
+{{--                        Financial Projections--}}
+{{--                    </a>--}}
+{{--                    <a href="{{ route('business-plans.edit', $plan->id) }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">--}}
+{{--                        Edit Business Plan--}}
+{{--                    </a>--}}
+{{--                    <button wire:click="$dispatchTo('save-to-collection-modal', 'openModal', { businessPlanId: {{ $plan->id }} })" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">--}}
+{{--                        Save to Collection--}}
+{{--                    </button>--}}
+{{--                </div>--}}
 
                 <div class="mb-6">
                     <h2 class="text-2xl font-semibold border-b-2 border-gray-700 pb-2 mb-4">Executive Summary</h2>

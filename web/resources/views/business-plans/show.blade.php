@@ -14,25 +14,26 @@
 
     <div class="py-12 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 min-h-screen">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-
             @auth
-                <div class="mb-6 flex justify-end space-x-4">
-                    <a href="/business-plans/{{ $plan->id }}/canvas" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                        View Canvas
-                    </a>
-                    <a href="/business-plans/{{ $plan->id }}/pitch-deck" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
-                        View Pitch Deck
-                    </a>
-                    <a href="/business-plans/{{ $plan->id }}/financial-projections" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
-                        Financial Projections
-                    </a>
-                    <a href="/business-plans/{{ $plan->id }}/edit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                        Edit Business Plan
-                    </a>
-                    <button onclick="Livewire.dispatchTo('save-to-collection-modal', 'openModal', { businessPlanId: {{ $plan->id }} })" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        Save to Collection
-                    </button>
-                </div>
+                @if(in_array(auth()->user()->plan, ['innovator', 'enterprise']))
+                    <div class="mb-6 flex justify-end space-x-4">
+                        <a href="/business-plans/{{ $plan->id }}/canvas" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                            View Canvas
+                        </a>
+                        <a href="/business-plans/{{ $plan->id }}/pitch-deck" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+                            View Pitch Deck
+                        </a>
+                        <a href="/business-plans/{{ $plan->id }}/financial-projections" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                            Financial Projections
+                        </a>
+                        <a href="/business-plans/{{ $plan->id }}/edit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Edit Business Plan
+                        </a>
+                        <button onclick="Livewire.dispatchTo('save-to-collection-modal', 'openModal', { businessPlanId: {{ $plan->id }} })" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            Save to Collection
+                        </button>
+                    </div>
+                @endif
             @endauth
 
             <!-- Hero Section - Executive Summary -->
