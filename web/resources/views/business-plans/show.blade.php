@@ -5,9 +5,16 @@
                 <h2 class="font-bold text-3xl text-gray-900 dark:text-white leading-tight">
                     {{ $plan->title }}
                 </h2>
-                <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                    Viability Score: <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">{{ $plan->viability_score }}/10</span>
-                </p>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                    @if($plan->subreddit)
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
+                             r/{{ $plan->subreddit }}
+                        </span>
+                    @endif
+                    <p class="text-sm text-gray-600 dark:text-gray-400 flex items-center">
+                        Viability Score: <span class="ml-1 inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">{{ $plan->viability_score }}/10</span>
+                    </p>
+                </div>
             </div>
         </div>
     </x-slot>
@@ -16,7 +23,7 @@
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
             @auth
                 @if(in_array(auth()->user()->plan, ['innovator', 'enterprise']))
-                    <div class="mb-6 flex justify-end space-x-4">
+                    {{--<div class="mb-6 flex justify-end space-x-4">
                         <a href="/business-plans/{{ $plan->id }}/canvas" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
                             View Canvas
                         </a>
@@ -32,7 +39,7 @@
                         <button onclick="Livewire.dispatchTo('save-to-collection-modal', 'openModal', { businessPlanId: {{ $plan->id }} })" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                             Save to Collection
                         </button>
-                    </div>
+                    </div>--}}
                 @endif
             @endauth
 

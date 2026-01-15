@@ -51,10 +51,30 @@
         @forelse ($businessPlans as $plan)
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-xl sm:rounded-lg mb-6">
                 <div class="p-6 sm:px-20 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                    <h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">{{ $plan->title }}</h2>
-                    <p class="text-gray-600 dark:text-gray-400">{{ $plan->summary }}</p>
-                    <div class="mt-4 flex justify-end">
-                        <a href="/business-plans/{{ $plan->id }}" wire:navigate class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+                        <div>
+                            <div class="flex items-center gap-2 mb-2">
+                                @if($plan->subreddit)
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30">
+                                        r/{{ $plan->subreddit }}
+                                    </span>
+                                @endif
+                                @if($plan->viability_score)
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-400 border border-green-200 dark:border-green-500/30">
+                                        Score: {{ $plan->viability_score }}
+                                    </span>
+                                @endif
+                            </div>
+                            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ $plan->title }}</h2>
+                        </div>
+                    </div>
+                    
+                    <div class="prose dark:prose-invert max-w-none text-gray-600 dark:text-gray-400 mb-6">
+                        {{ Str::limit($plan->executive_summary ?? $plan->summary, 250) }}
+                    </div>
+
+                    <div class="flex justify-end">
+                        <a href="/business-plans/{{ $plan->id }}" wire:navigate class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
                             View Details
                         </a>
                     </div>

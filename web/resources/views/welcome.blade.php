@@ -4,253 +4,348 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>Business Finder - Data-Driven Business Ideas</title>
+    <title>Business Finder - AI-Curated SaaS Ideas for Builders</title>
+    <meta name="description" content="Stop guessing what to build. Discover validated SaaS business ideas from millions of real Reddit conversations. Perfect for solopreneurs and AI-powered developers.">
 
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+
+    <style>
+        .gradient-text {
+            background: linear-gradient(135deg, #34d399 0%, #3b82f6 50%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .glow-card {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(12px);
+            transition: all 0.3s ease;
+        }
+        .glow-card:hover {
+            box-shadow: 0 0 40px rgba(59, 130, 246, 0.15);
+            transform: translateY(-4px);
+        }
+        .pulse-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .stat-card {
+            background: linear-gradient(145deg, rgba(31, 41, 55, 0.8) 0%, rgba(17, 24, 39, 0.9) 100%);
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-white font-sans antialiased">
+<body class="bg-gray-950 text-white font-sans antialiased">
     @include('layouts.navigation')
-    <div class="min-h-screen flex flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+
+    <div class="min-h-screen">
 
         <!-- Hero Section -->
-        <div class="text-center mb-12">
-            <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500 mb-3">
-                Unlock Your Next Venture
-            </h1>
-            <p class="text-gray-300 text-lg max-w-3xl mx-auto">
-                Stop guessing. We analyze millions of Reddit conversations to uncover real-world problems and data-driven business ideas, delivering validated plans to spark your entrepreneurial journey.
-            </p>
+        <div class="relative overflow-hidden">
+            <!-- Subtle gradient background -->
+            <div class="absolute inset-0 bg-gradient-to-br from-blue-950/30 via-gray-950 to-purple-950/20"></div>
+
+            <div class="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 sm:pt-24 pb-12 sm:pb-16">
+                <div class="text-center">
+
+                    <!-- Badge -->
+                    <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-800/80 border border-gray-700/50 mb-8">
+                        <span class="w-2 h-2 rounded-full bg-green-400 pulse-dot"></span>
+                        <span class="text-sm text-gray-300">50,000+ AI-analyzed ideas</span>
+                    </div>
+
+                    <!-- Main Headline -->
+                    <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight mb-6">
+                        Find Your Next<br>
+                        <span class="gradient-text">SaaS to Build</span>
+                    </h1>
+
+                    <!-- Subheadline -->
+                    <p class="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+                        We scan millions of Reddit conversations to find real problems people pay to solve.
+                        <span class="text-white font-medium">Perfect for solo founders using AI to ship fast.</span>
+                    </p>
+
+                    <!-- CTA Buttons -->
+                    <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                        <a href="{{ route('business-plan-search.index') }}" wire:navigate
+                           class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold py-4 px-8 rounded-xl transition-all duration-300 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                            </svg>
+                            Search Ideas
+                        </a>
+                        <a href="/"
+                           class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-4 px-8 rounded-xl border border-gray-700 hover:border-gray-600 transition-all duration-300">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            Random Idea
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <!-- Featured Idea Section -->
+        <!-- Featured Idea Card -->
         @if ($plan && $plan->exists)
-            <div class="w-full max-w-3xl bg-gray-800 shadow-2xl rounded-xl p-8 mb-8 border border-gray-700 transform hover:scale-105 transition-transform duration-300">
-                <h2 class="text-3xl font-bold mb-3 text-green-400">{{ $plan->title }}</h2>
-                <p class="text-gray-400 mb-6">{{ Str::limit($plan->executive_summary, 180) }}</p>
-                <div class="flex justify-between items-center">
-                    <a href="/business-plans/{{ $plan->id }}" wire:navigate class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300">
+        <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+            <div class="glow-card rounded-2xl p-8 border border-gray-800">
+                <!-- Header -->
+                <div class="flex items-start justify-between gap-4 mb-4">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-3 mb-3">
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                                💡 Featured Idea
+                            </span>
+                            @if($plan->subreddit)
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                                r/{{ $plan->subreddit }}
+                            </span>
+                            @endif
+                                💡 Featured Idea
+                            </span>
+                            @if($plan->is_saas)
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                                SaaS
+                            </span>
+                            @endif
+                            @if($plan->is_solo_entrepreneur_possible)
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                                Solo Friendly
+                            </span>
+                            @endif
+                        </div>
+                        <h2 class="text-2xl sm:text-3xl font-bold text-white leading-tight">{{ $plan->title }}</h2>
+                    </div>
+                    @if($plan->viability_score)
+                    <div class="flex-shrink-0 text-center">
+                        <div class="w-16 h-16 rounded-full bg-gradient-to-br from-green-500/20 to-blue-500/20 border border-gray-700 flex items-center justify-center">
+                            <span class="text-xl font-bold text-white">{{ $plan->viability_score }}</span>
+                        </div>
+                        <span class="text-xs text-gray-500 mt-1 block">Score</span>
+                    </div>
+                    @endif
+                </div>
+
+                <!-- Summary -->
+                <p class="text-gray-400 mb-6 leading-relaxed">{{ Str::limit($plan->executive_summary, 200) }}</p>
+
+                <!-- Actions -->
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <a href="/business-plans/{{ $plan->id }}" wire:navigate
+                       class="flex-1 inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300">
                         View Full Plan
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                        </svg>
                     </a>
-                    <a href="/" class="text-green-400 hover:text-green-300 font-semibold py-3 px-6 transition duration-300">
-                        Show Me Another &rarr;
+                    <a href="/"
+                       class="flex-1 inline-flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-medium py-3 px-6 rounded-xl border border-gray-700 hover:border-gray-600 transition-all duration-300">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Show Me Another
                     </a>
                 </div>
             </div>
+        </div>
         @else
-            <div class="max-w-2xl w-full bg-gray-800 shadow-2xl rounded-lg p-8 mb-8 text-center border border-gray-700">
-                <p class="text-lg text-gray-400">No business plans found. Our data miners are hard at work. Click below to try again.</p>
-                <a href="/" class="mt-4 inline-block bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300">
-                    Refresh Ideas
+        <div class="max-w-xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+            <div class="glow-card rounded-2xl p-8 border border-gray-800 text-center">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-800 flex items-center justify-center">
+                    <svg class="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                    </svg>
+                </div>
+                <p class="text-gray-400 mb-4">No business plans loaded yet. Our AI is analyzing data.</p>
+                <a href="/" class="inline-flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white font-medium py-3 px-6 rounded-xl transition-all duration-300">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Try Again
                 </a>
             </div>
+        </div>
         @endif
 
-        <!-- Feature Wall Section -->
-        <div class="w-full max-w-7xl mx-auto mt-16 sm:mt-24 px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-16">
-                <h2 class="text-4xl sm:text-5xl font-bold mb-4">Your Complete Idea-to-Venture Toolkit</h2>
-                <p class="text-gray-400 text-lg sm:text-xl max-w-3xl mx-auto">From initial spark to strategic plan, Business Finder provides a comprehensive suite of AI-powered tools to guide your entrepreneurial journey.</p>
+        <!-- Why This Works Section -->
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+            <div class="text-center mb-12">
+                <h2 class="text-2xl sm:text-3xl font-bold mb-3">Built for Solo Builders</h2>
+                <p class="text-gray-400 max-w-xl mx-auto">Skip the idea validation phase. Every idea comes from real people expressing real frustrations.</p>
             </div>
 
-            <!-- Section 1: Discover & Validate -->
-            <div class="mb-16">
-                <h3 class="text-2xl sm:text-3xl font-bold text-blue-400 mb-8 text-center">Discover & Validate</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 text-left">
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Semantic Search</h4><p class="mt-1 text-sm text-gray-400">Go beyond keywords and search for concepts, problems, and solutions.</p></div></div>
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Advanced Filtering</h4><p class="mt-1 text-sm text-gray-400">Filter ideas by industry, market size, sentiment, required capital, and more.</p></div></div>
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Personalized Feed</h4><p class="mt-1 text-sm text-gray-400">An AI-curated feed of ideas based on your interests and interactions.</p></div></div>
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Real-time Trends</h4><p class="mt-1 text-sm text-gray-400">See which ideas are new and growing in popularity with a velocity score.</p></div></div>
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Sentiment Analysis</h4><p class="mt-1 text-sm text-gray-400">Gauge the emotional response to an idea with an AI-generated sentiment score.</p></div></div>
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Proactive Alerts</h4><p class="mt-1 text-sm text-gray-400">Get email notifications when new ideas matching your criteria start trending.</p></div></div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Card 1 -->
+                <div class="stat-card rounded-2xl p-6 border border-gray-800">
+                    <div class="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">Real Pain Points</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">Every idea comes from Reddit threads where people are genuinely frustrated and asking for solutions.</p>
+                </div>
+
+                <!-- Card 2 -->
+                <div class="stat-card rounded-2xl p-6 border border-gray-800">
+                    <div class="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">Solo-Friendly Ideas</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">Filtered for ideas a single developer can realistically build and launch using modern AI tools.</p>
+                </div>
+
+                <!-- Card 3 -->
+                <div class="stat-card rounded-2xl p-6 border border-gray-800">
+                    <div class="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">SaaS-First Filter</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">Pre-filtered for recurring revenue opportunities. Build products, not one-time gigs.</p>
                 </div>
             </div>
-
-            <!-- Section 2: Analyze & Strategize -->
-            <div class="mb-16">
-                <h3 class="text-2xl sm:text-3xl font-bold text-blue-400 mb-8 text-center">Analyze & Strategize</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 text-left">
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Audience Personas</h4><p class="mt-1 text-sm text-gray-400">Get AI-generated personas of your target audience, including their key traits.</p></div></div>
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M12 12a2 2 0 11-4 0 2 2 0 014 0z"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Competitor Deep Dive</h4><p class="mt-1 text-sm text-gray-400">Go beyond names to analyze competitor strategies and market positioning.</p></div></div>
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">AI-Powered SWOT Analysis</h4><p class="mt-1 text-sm text-gray-400">Automatically generate a SWOT analysis for any business idea.</p></div></div>
-                </div>
-            </div>
-
-            <!-- Section 3: Develop & Plan -->
-            <div class="mb-16">
-                <h3 class="text-2xl sm:text-3xl font-bold text-blue-400 mb-8 text-center">Develop & Plan</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 text-left">
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Interactive Plan Editor</h4><p class="mt-1 text-sm text-gray-400">Edit, customize, and expand on your business plans in real-time.</p></div></div>
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l-4 4-4-4M6 16l-4-4 4-4"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">AI Idea Fusion</h4><p class="mt-1 text-sm text-gray-400">Select multiple ideas and have our AI merge them into a novel hybrid concept.</p></div></div>
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Business Model Canvas</h4><p class="mt-1 text-sm text-gray-400">Automatically generate an interactive Business Model Canvas from your plan.</p></div></div>
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01M12 14v3m-3-3h6M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Basic Financial Projections</h4><p class="mt-1 text-sm text-gray-400">Generate simple revenue and cost forecasts based on market data.</p></div></div>
-                    <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex items-start"><div class="flex-shrink-0"><svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg></div><div class="ml-4"><h4 class="text-lg font-bold">Name & Slogan Generation</h4><p class="mt-1 text-sm text-gray-400">Let AI assist in brainstorming creative and available business names.</p></div></div>
-                </div>
-            </div>
-
         </div>
 
         <!-- Pricing Section -->
-        <div class="w-full max-w-7xl mx-auto pt-16 pb-8 sm:pt-24 sm:pb-12 px-4 sm:px-6 lg:px-8 text-center">
-            <h2 class="text-3xl sm:text-4xl font-bold mb-2">Find the Perfect Plan for Your Ambition</h2>
-            <p class="text-gray-400 text-lg sm:text-xl mb-16">From casual exploration to deep market analysis, we have you covered.</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 items-start">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl sm:text-4xl font-bold mb-4">Beta Access Pricing</h2>
+                <p class="text-gray-400 text-lg max-w-2xl mx-auto">
+                    During our Beta period, the <span class="text-white font-semibold">Founder Plan</span> is completely free. 
+                    Monitor our roadmap as we roll out advanced features.
+                </p>
+            </div>
 
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
+                
                 <!-- Tier 1: Explorer -->
-                <div class="bg-gray-800/50 p-8 rounded-xl border border-gray-700 flex flex-col h-full">
-                    <h3 class="text-2xl font-semibold">Explorer</h3>
-                    <p class="text-gray-400 mt-2 mb-6">For casual discovery.</p>
-                    <p class="text-4xl font-bold">Free</p>
-                    <a href="#" class="w-full text-center bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300 mt-6">Start Exploring</a>
-                    <ul class="text-gray-300 space-y-3 text-left mt-8 flex-grow">
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>5 New Plans per Day</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Save up to 3 Plans</li>
+                <div class="glow-card rounded-2xl p-6 border border-gray-800 opacity-60 grayscale hover:grayscale-0 transition-all duration-300 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 bg-gray-800 text-xs font-bold px-2 py-1 rounded-bl-lg text-gray-400">CLOSED</div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-300">Explorer</h3>
+                    <p class="text-sm text-gray-500 mb-6">For casual discovery.</p>
+                    <div class="mb-6">
+                        <span class="text-3xl font-bold text-gray-400">$0</span>
+                    </div>
+                    <button disabled class="w-full py-2 px-4 bg-gray-800 text-gray-500 font-medium rounded-lg cursor-not-allowed mb-8 text-sm border border-gray-700">
+                        Not Available in Beta
+                    </button>
+                    <ul class="space-y-3 text-sm text-gray-500">
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>5 New Plans per Day</li>
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Save up to 3 Plans</li>
                     </ul>
                 </div>
 
-                <!-- Tier 2: Founder -->
-                <div class="bg-gray-800 p-8 rounded-xl border-2 border-blue-500 flex flex-col h-full relative transform scale-105 z-10">
-                     <div class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2"><span class="bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full uppercase">Most Popular</span></div>
-                    <h3 class="text-2xl font-semibold text-blue-400">Founder</h3>
-                    <p class="text-gray-400 mt-2 mb-6">For serious entrepreneurs.</p>
-                    <p class="text-5xl font-bold">$29<span class="text-xl font-normal text-gray-400">/mo</span></p>
-                    <a href="#" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 mt-6">Start Founding</a>
-                    <ul class="text-gray-300 space-y-3 text-left mt-8 flex-grow">
-                        <li class="flex font-semibold"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Unlimited Plan Access</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Full Semantic Search</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Advanced Filtering & Sorting</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Sentiment Analysis Score</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>AI-Powered SWOT Analysis</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Business Name & Slogan Ideas</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Save & Organize Collections</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Export to PDF & Text</li>
+                <!-- Tier 2: Founder (Highlighted) -->
+                <div class="glow-card rounded-2xl p-6 border-2 border-blue-500/50 bg-gray-800/40 relative transform hover:-translate-y-1 transition-transform duration-300">
+                    <div class="absolute top-0 right-0 left-0 bg-blue-500/10 text-blue-400 text-xs font-bold px-2 py-1 text-center border-b border-blue-500/20">FREE DURING BETA</div>
+                    <h3 class="text-xl font-semibold mb-2 text-blue-400 mt-4">Founder</h3>
+                    <p class="text-sm text-gray-400 mb-6">For serious entrepreneurs.</p>
+                    <div class="mb-6 flex items-baseline gap-2">
+                        <span class="text-4xl font-bold text-white">$0</span>
+                        <span class="text-lg text-gray-500 line-through Decoration-gray-500">$29</span>
+                        <span class="text-sm text-gray-500">/mo</span>
+                    </div>
+                    <a href="{{ route('register') }}" class="block w-full text-center py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg mb-8 shadow-lg shadow-blue-900/50 transition-colors">
+                        Join Beta
+                    </a>
+                    <ul class="space-y-3 text-sm text-gray-300">
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Unlimited Plan Access</li>
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Full Semantic Search</li>
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Filtering & Sorting</li>
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Viability Scores</li>
+                        <li class="flex items-center gap-2 opacity-60"><svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>SWOT Analysis <span class="text-[10px] ml-auto border border-gray-600 px-1 rounded text-gray-400">SOON</span></li>
+                        <li class="flex items-center gap-2 opacity-60"><svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Name & Slogan Gen <span class="text-[10px] ml-auto border border-gray-600 px-1 rounded text-gray-400">SOON</span></li>
                     </ul>
                 </div>
 
                 <!-- Tier 3: Innovator -->
-                <div class="bg-gray-800/50 p-8 rounded-xl border border-gray-700 flex flex-col h-full">
-                    <h3 class="text-2xl font-semibold">Innovator</h3>
-                    <p class="text-gray-400 mt-2 mb-6">For dedicated power users.</p>
-                    <p class="text-5xl font-bold">$99<span class="text-xl font-normal text-gray-400">/mo</span></p>
-                    <a href="#" class="w-full text-center bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300 mt-6">Start Innovating</a>
-                    <ul class="text-gray-300 space-y-3 text-left mt-8 flex-grow">
-                        <li class="flex font-semibold"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Everything in Founder</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Trend Velocity Score</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Audience Insights & Personas</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Competitor Radar</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Suggested Monetization Strategies</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Interactive Plan Editor</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Business Model Canvas Generator</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Basic Financial Projections</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Alerts & Notifications</li>
+                <div class="glow-card rounded-2xl p-6 border border-gray-800 opacity-60 grayscale hover:grayscale-0 transition-all duration-300 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 bg-gray-800 text-xs font-bold px-2 py-1 rounded-bl-lg text-gray-400">CLOSED</div>
+                    <h3 class="text-xl font-semibold mb-2 text-green-400">Innovator</h3>
+                    <p class="text-sm text-gray-500 mb-6">Full power for builders.</p>
+                    <div class="mb-6">
+                        <span class="text-3xl font-bold text-gray-400">$99</span><span class="text-gray-600">/mo</span>
+                    </div>
+                    <button disabled class="w-full py-2 px-4 bg-gray-800 text-gray-500 font-medium rounded-lg cursor-not-allowed mb-8 text-sm border border-gray-700">
+                        Not Available in Beta
+                    </button>
+                    <ul class="space-y-3 text-sm text-gray-500">
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg><span class="font-semibold text-gray-400">Everything in Founder</span></li>
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Interactive Plan Editor</li>
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Pitch Deck Generator</li>
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Business Model Canvas</li>
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Collections & export</li>
+                        <li class="flex items-center gap-2 opacity-60"><svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Trend Velocity <span class="text-[10px] ml-auto border border-gray-600 px-1 rounded">SOON</span></li>
+                        <li class="flex items-center gap-2 opacity-60"><svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Audience Personas <span class="text-[10px] ml-auto border border-gray-600 px-1 rounded">SOON</span></li>
+                        <li class="flex items-center gap-2 opacity-60"><svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Competitor Radar <span class="text-[10px] ml-auto border border-gray-600 px-1 rounded">SOON</span></li>
                     </ul>
                 </div>
 
                 <!-- Tier 4: Enterprise -->
-                <div class="bg-gray-800/50 p-8 rounded-xl border border-gray-700 flex flex-col h-full">
-                    <h3 class="text-2xl font-semibold">Enterprise</h3>
-                    <p class="text-gray-400 mt-2 mb-6">For teams and agencies.</p>
-                    <p class="text-4xl font-bold">Custom</p>
-                    <a href="#" class="w-full text-center bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300 mt-6">Contact Sales</a>
-                    <ul class="text-gray-300 space-y-3 text-left mt-8 flex-grow">
-                        <li class="flex font-semibold"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Everything in Innovator</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Team Accounts & Collaboration</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Full API Access</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Competitor Analysis Deep Dive</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Pitch Deck Generator</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>White-Label Reports</li>
-                        <li class="flex"><svg class="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Dedicated Support</li>
+                <div class="glow-card rounded-2xl p-6 border border-gray-800 opacity-60 grayscale hover:grayscale-0 transition-all duration-300 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 bg-gray-800 text-xs font-bold px-2 py-1 rounded-bl-lg text-gray-400">CLOSED</div>
+                    <h3 class="text-xl font-semibold mb-2 text-purple-400">Enterprise</h3>
+                    <p class="text-sm text-gray-500 mb-6">For teams & agencies.</p>
+                    <div class="mb-6">
+                        <span class="text-3xl font-bold text-gray-400">Custom</span>
+                    </div>
+                    <button disabled class="w-full py-2 px-4 bg-gray-800 text-gray-500 font-medium rounded-lg cursor-not-allowed mb-8 text-sm border border-gray-700">
+                        Not Available in Beta
+                    </button>
+                    <ul class="space-y-3 text-sm text-gray-500">
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Team Accounts</li>
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>API Access</li>
+                        <li class="flex items-center gap-2"><svg class="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>White-Label Reports</li>
                     </ul>
                 </div>
 
             </div>
         </div>
 
-        <!-- Waitlist Section -->
-
-
-    </div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const modal = document.getElementById('waitlist-modal');
-            const modalForm = modal.querySelector('form');
-            const openModalButtons = document.querySelectorAll('a[href="#"]');
-
-            openModalButtons.forEach(button => {
-                button.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    modal.classList.remove('hidden');
-                });
-            });
-
-            modal.addEventListener('click', function (e) {
-                if (e.target === modal) {
-                    modal.classList.add('hidden');
-                }
-            });
-
-            modalForm.addEventListener('submit', function (e) {
-                e.preventDefault();
-
-                const email = modalForm.querySelector('input[name="email"]').value;
-                const token = modalForm.querySelector('input[name="_token"]').value;
-
-                fetch('{{ route('waitlist.store') }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': token,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ email })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    const successMessage = document.createElement('p');
-                    successMessage.classList.add('text-green-400', 'mt-4');
-
-                    const errorMessage = document.createElement('p');
-                    errorMessage.classList.add('text-red-400', 'mt-4');
-
-                    if (data.success) {
-                        modalForm.querySelector('input[name="email"]').value = '';
-                        successMessage.textContent = data.success;
-                        modalForm.parentNode.appendChild(successMessage);
-
-                        setTimeout(() => {
-                            modal.classList.add('hidden');
-                            successMessage.remove();
-                        }, 3000);
-                    } else if (data.errors) {
-                        errorMessage.textContent = data.errors.email[0];
-                        modalForm.parentNode.appendChild(errorMessage);
-
-                        setTimeout(() => {
-                            errorMessage.remove();
-                        }, 3000);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
-            });
-        });
-    </script>
-
-    <div id="waitlist-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden">
-        <div class="bg-gray-800 rounded-lg p-8 max-w-md w-full">
-            <h3 class="text-2xl font-semibold mb-3">Coming Soon!</h3>
-            <p class="text-gray-400 mb-6">Paid plans are not yet available. Join the waitlist to be notified when they launch.</p>
-            <form action="{{ route('waitlist.store') }}" method="POST" class="flex justify-center max-w-md mx-auto">
-                @csrf
-                <input type="email" name="email" placeholder="your.email@company.com" class="w-full px-4 py-3 border border-gray-700 bg-gray-800 rounded-l-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                <button type="submit" class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-r-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Join Waitlist</button>
-            </form>
+        <!-- Simple CTA -->
+        <div class="border-t border-gray-800">
+            <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+                <h2 class="text-2xl sm:text-3xl font-bold mb-4">Ready to find your next project?</h2>
+                <p class="text-gray-400 mb-8">Stop scrolling Reddit for ideas. We already did the work.</p>
+                <a href="{{ route('business-plan-search.index') }}" wire:navigate
+                   class="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold py-4 px-10 rounded-xl transition-all duration-300 shadow-lg shadow-blue-500/25">
+                    Browse All Ideas
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                    </svg>
+                </a>
+            </div>
         </div>
+
+        <!-- Footer -->
+        <footer class="border-t border-gray-800 py-8">
+            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+                    <p>© {{ date('Y') }} Business Finder. Built with AI, for AI builders.</p>
+                    <div class="flex items-center gap-6">
+                        <a href="{{ route('business-plan-search.index') }}" class="hover:text-gray-300 transition-colors">Search</a>
+                        @guest
+                            <a href="{{ route('login') }}" class="hover:text-gray-300 transition-colors">Sign In</a>
+                            <a href="{{ route('register') }}" class="hover:text-gray-300 transition-colors">Register</a>
+                        @endguest
+                    </div>
+                </div>
+            </div>
+        </footer>
+
     </div>
+
 </body>
 </html>

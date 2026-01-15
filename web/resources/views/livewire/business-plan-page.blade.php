@@ -2,7 +2,21 @@
     @if ($plan && $plan->exists)
         <div class="max-w-4xl mx-auto py-8">
             <div class="bg-gray-800 shadow-lg rounded-lg p-8 text-white">
-                <h1 class="text-4xl font-bold mb-4">{{ $plan->title }}</h1>
+                <div class="flex flex-wrap items-center gap-2 mb-4">
+                    @if($plan->subreddit)
+                        
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                            r/{{ $plan->subreddit }}
+                        </span>
+                    @endif
+                    @if($plan->viability_score)
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                            Viability: {{ $plan->viability_score }}/100
+                        </span>
+                    @endif
+                </div>
+
+                <h1 class="text-4xl font-bold mb-4 text-white">{{ $plan->title }}</h1>
                 <p class="text-gray-400 text-lg mb-6">{{ $plan->summary }}</p>
 
 {{--                <div class="mb-6 flex justify-end space-x-4">--}}
