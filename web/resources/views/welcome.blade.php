@@ -101,16 +101,11 @@
                 <div class="flex items-start justify-between gap-4 mb-4">
                     <div class="flex-1">
                         <div class="flex items-center gap-3 mb-3">
-                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                                💡 Featured Idea
-                            </span>
                             @if($plan->subreddit)
                             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400 border border-orange-500/30">
                                 r/{{ $plan->subreddit }}
                             </span>
                             @endif
-                                💡 Featured Idea
-                            </span>
                             @if($plan->is_saas)
                             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
                                 SaaS
@@ -223,13 +218,13 @@
             <div class="text-center mb-16">
                 <h2 class="text-3xl sm:text-4xl font-bold mb-4">Beta Access Pricing</h2>
                 <p class="text-gray-400 text-lg max-w-2xl mx-auto">
-                    During our Beta period, the <span class="text-white font-semibold">Founder Plan</span> is completely free. 
+                    During our Beta period, the <span class="text-white font-semibold">Founder Plan</span> is completely free.
                     Monitor our roadmap as we roll out advanced features.
                 </p>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
-                
+
                 <!-- Tier 1: Explorer -->
                 <div class="glow-card rounded-2xl p-6 border border-gray-800 opacity-60 grayscale hover:grayscale-0 transition-all duration-300 relative overflow-hidden">
                     <div class="absolute top-0 right-0 bg-gray-800 text-xs font-bold px-2 py-1 rounded-bl-lg text-gray-400">CLOSED</div>

@@ -55,7 +55,14 @@ class BusinessPlanDao
             'body' => [
                 'query' => [
                     'function_score' => [
-                        'query' => ['match_all' => (object)[]],
+                        'query' => [
+                            'bool' => [
+                                'must' => [
+                                    ['term' => ['is_saas' => ['value' => true]]],
+                                    ['term' => ['is_solo_entrepreneur_possible' => ['value' => true]]],
+                                ],
+                            ],
+                        ],
                         'random_score' => (object) [],
                     ],
                 ],
@@ -63,7 +70,6 @@ class BusinessPlanDao
         ];
 
         $response = $this->elasticsearch->search($params);
-
         $planData = $response['hits']['hits'][0] ?? null;
 
         if ($planData) {
