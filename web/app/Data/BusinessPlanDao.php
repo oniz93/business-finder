@@ -55,14 +55,35 @@ class BusinessPlanDao
             'body' => [
                 'query' => [
                     'function_score' => [
-                        'query' => ['match_all' => (object)[]],
+                        'query' => [
+                            'bool' => [
+                                'must' => [
+                                    ['term' => ['is_saas' => ['value' => true]]],
+                                    ['term' => ['is_solo_entrepreneur_possible' => ['value' => true]]],
+                                ],
+                            ],
+                        ],
                         'random_score' => (object) [],
                     ],
                 ],
             ],
         ];
 
+        // DEBUG: Log the query being sent
+        \Log::info('Elasticsearch Query:', ['params' => json_encode($params, JSON_PRETTY_PRINT)]);
+        
+        // DEBUG: Check total documents in index
+        try {
+            $countResponse = $this->elasticsearch->count(['index' => $this->index]);
+            \Log::info('Total docs in index:', ['count' => $countResponse['count'] ?? 'unknown']);
+        } catch (\Exception $e) {
+            \Log::error('Count failed:', ['error' => $e->getMessage()]);
+        }
+        
         $response = $this->elasticsearch->search($params);
+        
+        // DEBUG: Log the response
+        \Log::info('Elasticsearch Response:', ['hits' => $response['hits']['total'] ?? 'no total', 'count' => count($response['hits']['hits'] ?? [])]);
 
         $planData = $response['hits']['hits'][0] ?? null;
 

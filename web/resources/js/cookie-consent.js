@@ -14,26 +14,36 @@ function setCookie(name, value, days) {
 
 function acceptCookies() {
     setCookie('cookie_consent', 'accepted', 365);
-    document.getElementById('cookie-consent-banner').style.display = 'none';
-    gtag('consent', 'update', {
-        'analytics_storage': 'granted'
-    });
+    const banner = document.getElementById('cookie-consent-banner');
+    if (banner) banner.style.display = 'none';
+
+    // Update GA consent
+    if (typeof gtag === 'function') {
+        gtag('consent', 'update', {
+            'analytics_storage': 'granted'
+        });
+    }
 }
 
 function rejectCookies() {
     setCookie('cookie_consent', 'rejected', 365);
-    document.getElementById('cookie-consent-banner').style.display = 'none';
+    const banner = document.getElementById('cookie-consent-banner');
+    if (banner) banner.style.display = 'none';
 }
 
+// Expose functions to window so they can be called from inline onclick handlers in Blade
 window.acceptCookies = acceptCookies;
 window.rejectCookies = rejectCookies;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     if (getCookie('cookie_consent') === 'accepted') {
-        gtag('consent', 'update', {
-            'analytics_storage': 'granted'
-        });
+        if (typeof gtag === 'function') {
+            gtag('consent', 'update', {
+                'analytics_storage': 'granted'
+            });
+        }
     } else if (!getCookie('cookie_consent')) {
-        document.getElementById('cookie-consent-banner').style.display = 'block';
+        const banner = document.getElementById('cookie-consent-banner');
+        if (banner) banner.style.display = 'block';
     }
 });

@@ -11,7 +11,7 @@
                     @endif
                     @if($plan->viability_score)
                         <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                            Viability: {{ $plan->viability_score }}/100
+                            Viability: {{ $plan->viability_score }}/10
                         </span>
                     @endif
                 </div>

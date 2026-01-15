@@ -12,7 +12,7 @@
                         </span>
                     @endif
                     <p class="text-sm text-gray-600 dark:text-gray-400 flex items-center">
-                        Viability Score: <span class="ml-1 inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">{{ $plan->viability_score }}/10</span>
+                        Viability Score: <span class="ml-1 inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">{{ $plan->viability_score > 10 ? $plan->viability_score / 10 : $plan->viability_score }}/10</span>
                     </p>
                 </div>
             </div>
@@ -276,7 +276,7 @@
                             </div>
                             <div class="sm:col-span-1">
                                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Viability Score</dt>
-                                <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ $plan->viability_score }}/10</dd>
+                                <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ $plan->viability_score > 10 ? $plan->viability_score / 10 : $plan->viability_score }}/10</dd>
                             </div>
                             <div class="sm:col-span-1">
                                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">SaaS?</dt>

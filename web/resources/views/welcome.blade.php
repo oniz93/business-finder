@@ -13,6 +13,20 @@
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JG4MJ55HBH"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+
+        gtag('consent', 'default', {
+            'analytics_storage': 'denied'
+        });
+
+        gtag('config', 'G-JG4MJ55HBH');
+    </script>
+
     <style>
         .gradient-text {
             background: linear-gradient(135deg, #34d399 0%, #3b82f6 50%, #8b5cf6 100%);
@@ -57,7 +71,7 @@
                     <!-- Badge -->
                     <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-800/80 border border-gray-700/50 mb-8">
                         <span class="w-2 h-2 rounded-full bg-green-400 pulse-dot"></span>
-                        <span class="text-sm text-gray-300">50,000+ AI-analyzed ideas</span>
+                        <span class="text-sm text-gray-300">12,000+ AI-analyzed business ideas</span>
                     </div>
 
                     <!-- Main Headline -->
@@ -101,16 +115,11 @@
                 <div class="flex items-start justify-between gap-4 mb-4">
                     <div class="flex-1">
                         <div class="flex items-center gap-3 mb-3">
-                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                                💡 Featured Idea
-                            </span>
                             @if($plan->subreddit)
                             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400 border border-orange-500/30">
                                 r/{{ $plan->subreddit }}
                             </span>
                             @endif
-                                💡 Featured Idea
-                            </span>
                             @if($plan->is_saas)
                             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
                                 SaaS
@@ -127,7 +136,7 @@
                     @if($plan->viability_score)
                     <div class="flex-shrink-0 text-center">
                         <div class="w-16 h-16 rounded-full bg-gradient-to-br from-green-500/20 to-blue-500/20 border border-gray-700 flex items-center justify-center">
-                            <span class="text-xl font-bold text-white">{{ $plan->viability_score }}</span>
+                            <span class="text-xl font-bold text-white">{{ $plan->viability_score > 10 ? $plan->viability_score / 10 : $plan->viability_score }}</span>
                         </div>
                         <span class="text-xs text-gray-500 mt-1 block">Score</span>
                     </div>
@@ -223,13 +232,13 @@
             <div class="text-center mb-16">
                 <h2 class="text-3xl sm:text-4xl font-bold mb-4">Beta Access Pricing</h2>
                 <p class="text-gray-400 text-lg max-w-2xl mx-auto">
-                    During our Beta period, the <span class="text-white font-semibold">Founder Plan</span> is completely free. 
+                    During our Beta period, the <span class="text-white font-semibold">Founder Plan</span> is completely free.
                     Monitor our roadmap as we roll out advanced features.
                 </p>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
-                
+
                 <!-- Tier 1: Explorer -->
                 <div class="glow-card rounded-2xl p-6 border border-gray-800 opacity-60 grayscale hover:grayscale-0 transition-all duration-300 relative overflow-hidden">
                     <div class="absolute top-0 right-0 bg-gray-800 text-xs font-bold px-2 py-1 rounded-bl-lg text-gray-400">CLOSED</div>
@@ -347,5 +356,6 @@
 
     </div>
 
+    <x-cookie-consent-banner />
 </body>
 </html>
