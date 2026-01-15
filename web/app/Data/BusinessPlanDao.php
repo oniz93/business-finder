@@ -43,15 +43,16 @@ class BusinessPlanDao
     }
 
     /**
-     * Retrieve a random business plan.
+     * Retrieve a collection of random business plans.
      *
-     * @return BusinessPlan|null
+     * @param int $size
+     * @return array
      */
-    public function getRandom(): ?BusinessPlan
+    public function getRandom(int $size = 10): array
     {
         $params = [
             'index' => $this->index,
-            'size' => 1,
+            'size' => $size,
             'body' => [
                 'query' => [
                     'function_score' => [
@@ -69,28 +70,25 @@ class BusinessPlanDao
             ],
         ];
 
-        // DEBUG: Log the query being sent
-        \Log::info('Elasticsearch Query:', ['params' => json_encode($params, JSON_PRETTY_PRINT)]);
-        
-        // DEBUG: Check total documents in index
         try {
-            $countResponse = $this->elasticsearch->count(['index' => $this->index]);
-            \Log::info('Total docs in index:', ['count' => $countResponse['count'] ?? 'unknown']);
+            $response = $this->elasticsearch->search($params);
+            $plans = [];
+            
+            foreach ($response['hits']['hits'] as $hit) {
+                $plan = new BusinessPlan($hit['_source']);
+                $plan->id = $hit['_id'];
+                $plan->exists = true;
+                $plans[] = $plan;
+            }
+
+            return [
+                'plans' => $plans,
+                'total' => $response['hits']['total']['value'] ?? count($plans),
+            ];
         } catch (\Exception $e) {
-            \Log::error('Count failed:', ['error' => $e->getMessage()]);
+            \Log::error('Elasticsearch Search failed:', ['error' => $e->getMessage()]);
+            return ['plans' => [], 'total' => 0];
         }
-        
-        $response = $this->elasticsearch->search($params);
-        $planData = $response['hits']['hits'][0] ?? null;
-
-        if ($planData) {
-            $plan = new BusinessPlan($planData['_source']);
-            $plan->id = $planData['_id'];
-            $plan->exists = true;
-            return $plan;
-        }
-
-        return null;
     }
 
     /**

@@ -17,7 +17,8 @@ class BusinessPlanController extends Controller
 
     public function random()
     {
-        $plan = $this->businessPlanDao->getRandom();
+        $result = $this->businessPlanDao->getRandom(1);
+        $plan = $result['plans'][0] ?? null;
 
         if (!$plan) {
             // If no plan is found, create an empty BusinessPlan object
