@@ -1,112 +1,79 @@
-<!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+<x-app-layout>
+    @push('head')
+        <title>Business Finder - AI-Curated SaaS Ideas for Builders</title>
+        <meta name="description" content="Stop guessing what to build. Discover validated SaaS business ideas from millions of real Reddit conversations. Perfect for solopreneurs and AI-powered developers.">
 
-    <title>Business Finder - AI-Curated SaaS Ideas for Builders</title>
-    <meta name="description" content="Stop guessing what to build. Discover validated SaaS business ideas from millions of real Reddit conversations. Perfect for solopreneurs and AI-powered developers.">
+        <style>
+            .gradient-text {
+                background: linear-gradient(135deg, #34d399 0%, #3b82f6 50%, #8b5cf6 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+            .glow-card {
+                background: rgba(17, 24, 39, 0.7);
+                backdrop-filter: blur(12px);
+                transition: all 0.3s ease;
+            }
+            .glow-card:hover {
+                box-shadow: 0 0 40px rgba(59, 130, 246, 0.15);
+                transform: translateY(-4px);
+            }
+            .pulse-dot {
+                animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+            }
+            .stat-card {
+                background: linear-gradient(145deg, rgba(31, 41, 55, 0.8) 0%, rgba(17, 24, 39, 0.9) 100%);
+            }
+        </style>
+    @endpush
 
-    <link rel="icon" href="/favicon.ico" sizes="any">
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <!-- Hero Section -->
+    <div class="relative overflow-hidden bg-gray-950">
+        <!-- Subtle gradient background -->
+        <div class="absolute inset-0 bg-gradient-to-br from-blue-950/30 via-gray-950 to-purple-950/20"></div>
 
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+        <div class="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 sm:pt-24 pb-12 sm:pb-16">
+            <div class="text-center">
 
-    <!-- Google Analytics -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JG4MJ55HBH"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
+                <!-- Badge -->
+                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-800/80 border border-gray-700/50 mb-8">
+                    <span class="w-2 h-2 rounded-full bg-green-400 pulse-dot"></span>
+                    <span class="text-sm text-gray-300">12,000+ AI-analyzed business ideas</span>
+                </div>
 
-        gtag('consent', 'default', {
-            'analytics_storage': 'denied'
-        });
+                <!-- Main Headline -->
+                <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight mb-6 text-white">
+                    Find Your Next<br>
+                    <span class="gradient-text">SaaS to Build</span>
+                </h1>
 
-        gtag('config', 'G-JG4MJ55HBH');
-    </script>
+                <!-- Subheadline -->
+                <p class="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+                    We scan millions of Reddit conversations to find real problems people pay to solve.
+                    <span class="text-white font-medium">Perfect for solo founders using AI to ship fast.</span>
+                </p>
 
-    <style>
-        .gradient-text {
-            background: linear-gradient(135deg, #34d399 0%, #3b82f6 50%, #8b5cf6 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        .glow-card {
-            background: rgba(17, 24, 39, 0.7);
-            backdrop-filter: blur(12px);
-            transition: all 0.3s ease;
-        }
-        .glow-card:hover {
-            box-shadow: 0 0 40px rgba(59, 130, 246, 0.15);
-            transform: translateY(-4px);
-        }
-        .pulse-dot {
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        .stat-card {
-            background: linear-gradient(145deg, rgba(31, 41, 55, 0.8) 0%, rgba(17, 24, 39, 0.9) 100%);
-        }
-    </style>
-</head>
-<body class="bg-gray-950 text-white font-sans antialiased">
-    @include('layouts.navigation')
-
-    <div class="min-h-screen">
-
-        <!-- Hero Section -->
-        <div class="relative overflow-hidden">
-            <!-- Subtle gradient background -->
-            <div class="absolute inset-0 bg-gradient-to-br from-blue-950/30 via-gray-950 to-purple-950/20"></div>
-
-            <div class="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 sm:pt-24 pb-12 sm:pb-16">
-                <div class="text-center">
-
-                    <!-- Badge -->
-                    <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-800/80 border border-gray-700/50 mb-8">
-                        <span class="w-2 h-2 rounded-full bg-green-400 pulse-dot"></span>
-                        <span class="text-sm text-gray-300">12,000+ AI-analyzed business ideas</span>
-                    </div>
-
-                    <!-- Main Headline -->
-                    <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight mb-6">
-                        Find Your Next<br>
-                        <span class="gradient-text">SaaS to Build</span>
-                    </h1>
-
-                    <!-- Subheadline -->
-                    <p class="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-                        We scan millions of Reddit conversations to find real problems people pay to solve.
-                        <span class="text-white font-medium">Perfect for solo founders using AI to ship fast.</span>
-                    </p>
-
-                    <!-- CTA Buttons -->
-                    <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                        <a href="{{ route('business-plan-search.index') }}" wire:navigate
-                           class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold py-4 px-8 rounded-xl transition-all duration-300 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                            </svg>
-                            Search Ideas
-                        </a>
-                        <a href="/"
-                           class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-4 px-8 rounded-xl border border-gray-700 hover:border-gray-600 transition-all duration-300">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                            </svg>
-                            Random Idea
-                        </a>
-                    </div>
+                <!-- CTA Buttons -->
+                <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                    <a href="{{ route('business-plan-search.index') }}" wire:navigate
+                       class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold py-4 px-8 rounded-xl transition-all duration-300 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        Search Ideas
+                    </a>
                 </div>
             </div>
         </div>
+    </div>
 
+    <div class="bg-gray-950 pb-20">
+    
         <!-- Featured Idea Card -->
         @if ($plan && $plan->exists)
         <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
@@ -187,7 +154,7 @@
         <!-- Why This Works Section -->
         <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
             <div class="text-center mb-12">
-                <h2 class="text-2xl sm:text-3xl font-bold mb-3">Built for Solo Builders</h2>
+                <h2 class="text-2xl sm:text-3xl font-bold mb-3 text-white">Built for Solo Builders</h2>
                 <p class="text-gray-400 max-w-xl mx-auto">Skip the idea validation phase. Every idea comes from real people expressing real frustrations.</p>
             </div>
 
@@ -199,7 +166,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
                         </svg>
                     </div>
-                    <h3 class="text-lg font-semibold mb-2">Real Pain Points</h3>
+                    <h3 class="text-lg font-semibold mb-2 text-white">Real Pain Points</h3>
                     <p class="text-gray-400 text-sm leading-relaxed">Every idea comes from Reddit threads where people are genuinely frustrated and asking for solutions.</p>
                 </div>
 
@@ -210,7 +177,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                         </svg>
                     </div>
-                    <h3 class="text-lg font-semibold mb-2">Solo-Friendly Ideas</h3>
+                    <h3 class="text-lg font-semibold mb-2 text-white">Solo-Friendly Ideas</h3>
                     <p class="text-gray-400 text-sm leading-relaxed">Filtered for ideas a single developer can realistically build and launch using modern AI tools.</p>
                 </div>
 
@@ -221,7 +188,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                         </svg>
                     </div>
-                    <h3 class="text-lg font-semibold mb-2">SaaS-First Filter</h3>
+                    <h3 class="text-lg font-semibold mb-2 text-white">SaaS-First Filter</h3>
                     <p class="text-gray-400 text-sm leading-relaxed">Pre-filtered for recurring revenue opportunities. Build products, not one-time gigs.</p>
                 </div>
             </div>
@@ -230,7 +197,7 @@
         <!-- Pricing Section -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
             <div class="text-center mb-16">
-                <h2 class="text-3xl sm:text-4xl font-bold mb-4">Beta Access Pricing</h2>
+                <h2 class="text-3xl sm:text-4xl font-bold mb-4 text-white">Beta Access Pricing</h2>
                 <p class="text-gray-400 text-lg max-w-2xl mx-auto">
                     During our Beta period, the <span class="text-white font-semibold">Founder Plan</span> is completely free.
                     Monitor our roadmap as we roll out advanced features.
@@ -326,7 +293,7 @@
         <!-- Simple CTA -->
         <div class="border-t border-gray-800">
             <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-                <h2 class="text-2xl sm:text-3xl font-bold mb-4">Ready to find your next project?</h2>
+                <h2 class="text-2xl sm:text-3xl font-bold mb-4 text-white">Ready to find your next project?</h2>
                 <p class="text-gray-400 mb-8">Stop scrolling Reddit for ideas. We already did the work.</p>
                 <a href="{{ route('business-plan-search.index') }}" wire:navigate
                    class="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold py-4 px-10 rounded-xl transition-all duration-300 shadow-lg shadow-blue-500/25">
@@ -355,7 +322,4 @@
         </footer>
 
     </div>
-
-    <x-cookie-consent-banner />
-</body>
-</html>
+</x-app-layout>
