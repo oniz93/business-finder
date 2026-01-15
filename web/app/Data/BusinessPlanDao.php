@@ -81,10 +81,6 @@ class BusinessPlanDao
         }
         
         $response = $this->elasticsearch->search($params);
-        
-        // DEBUG: Log the response
-        \Log::info('Elasticsearch Response:', ['hits' => $response['hits']['total'] ?? 'no total', 'count' => count($response['hits']['hits'] ?? [])]);
-
         $planData = $response['hits']['hits'][0] ?? null;
 
         if ($planData) {
