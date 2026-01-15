@@ -23,25 +23,9 @@
                 </div>
             </div>
 
-            <input type="hidden" name="sortBy" value="{{ old('sortBy', $sortBy) }}" id="sortBy">
-            <input type="hidden" name="sortDirection" value="{{ old('sortDirection', $sortDirection) }}" id="sortDirection">
-
             <div class="mt-6 flex items-center space-x-4">
                 <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                     Search
-                </button>
-                <span class="text-gray-700 dark:text-gray-300">Sort By:</span>
-                <button type="button" onclick="document.getElementById('sortBy').value='created_at'; document.getElementById('sortDirection').value='{{ $sortBy === 'created_at' && $sortDirection === 'asc' ? 'desc' : 'asc' }}'; this.form.submit();" class="px-3 py-1 text-sm font-medium rounded-md {{ $sortBy === 'created_at' ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300' }}">
-                    Date Created
-                    @if ($sortBy === 'created_at')
-                        @if ($sortDirection === 'asc') &uarr; @else &darr; @endif
-                    @endif
-                </button>
-                <button type="button" onclick="document.getElementById('sortBy').value='total_ups'; document.getElementById('sortDirection').value='{{ $sortBy === 'total_ups' && $sortDirection === 'asc' ? 'desc' : 'asc' }}'; this.form.submit();" class="px-3 py-1 text-sm font-medium rounded-md {{ $sortBy === 'total_ups' ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300' }}">
-                    Popularity
-                    @if ($sortBy === 'total_ups')
-                        @if ($sortDirection === 'asc') &uarr; @else &darr; @endif
-                    @endif
                 </button>
             </div>
         </div>
