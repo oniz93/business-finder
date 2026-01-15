@@ -33,6 +33,8 @@ class RegisteredUserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'privacy_policy' => ['required', 'accepted'],
+            'receives_product_updates' => ['nullable', 'boolean'],
         ]);
 
         $user = User::create([
@@ -40,6 +42,9 @@ class RegisteredUserController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'plan' => 'founder',
+            'privacy_policy_accepted_at' => now(),
+            'receives_product_updates' => $request->boolean('receives_product_updates'),
+            'product_updates_consent_at' => $request->boolean('receives_product_updates') ? now() : null,
         ]);
 
         event(new Registered($user));

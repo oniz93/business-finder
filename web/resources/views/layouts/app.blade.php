@@ -57,7 +57,7 @@
         </main>
     </div>
 
-    <x-cookie-consent-banner />
+
 
     <script>
         function copyToClipboard(elementId) {

@@ -11,6 +11,7 @@ use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\BusinessPlanController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PrivacyConsentController;
 use App\Http\Controllers\SocialiteController;
 use App\Http\Controllers\WaitlistController;
 use App\Livewire\BusinessPlanSearch;
@@ -62,6 +63,9 @@ Route::middleware('guest')->group(function () {
 Route::get('/business-plan-search', BusinessPlanSearch::class)->name('business-plan-search.index');
 
 Route::middleware('auth')->group(function () {
+    Route::get('privacy-consent', [PrivacyConsentController::class, 'show'])->name('privacy.consent');
+    Route::post('privacy-consent', [PrivacyConsentController::class, 'accept'])->name('privacy.accept');
+
     Route::get('verify-email', EmailVerificationPromptController::class)
         ->name('verification.notice');
 

@@ -15,7 +15,7 @@ class ProfileUpdateRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $rules = [
             'name' => ['required', 'string', 'max:255'],
             'email' => [
                 'required',
@@ -25,11 +25,14 @@ class ProfileUpdateRequest extends FormRequest
                 'max:255',
                 Rule::unique(User::class)->ignore($this->user()->id),
             ],
-            'bio' => ['nullable', 'string'],
-            'website' => ['nullable', 'string', 'max:255'],
-            'twitter_handle' => ['nullable', 'string', 'max:255'],
-            'github_handle' => ['nullable', 'string', 'max:255'],
-            'linkedin_url' => ['nullable', 'string', 'max:255'],
+            'receives_product_updates' => ['nullable', 'boolean'],
         ];
+
+        // If email is verified, we don't allow updating it
+        if ($this->user()->hasVerifiedEmail()) {
+            unset($rules['email']);
+        }
+
+        return $rules;
     }
 }

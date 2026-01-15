@@ -25,7 +25,7 @@
 
         <div>
             <x-input-label for="email" :value="__('Email')" />
-            <x-text-input id="email" name="email" type="email" class="mt-1 block w-full" :value="old('email', $user->email)" required autocomplete="username" />
+            <x-text-input id="email" name="email" type="email" class="mt-1 block w-full {{ $user->hasVerifiedEmail() ? 'bg-gray-100 dark:bg-gray-800' : '' }}" :value="old('email', $user->email)" required autocomplete="username" :readonly="$user->hasVerifiedEmail()" />
             <x-input-error class="mt-2" :messages="$errors->get('email')" />
 
             @if ($user instanceof \Illuminate\Contracts\Auth\MustVerifyEmail && ! $user->hasVerifiedEmail())
@@ -47,34 +47,13 @@
             @endif
         </div>
 
-        <div>
-            <x-input-label for="bio" :value="__('Bio')" />
-            <textarea id="bio" name="bio" class="mt-1 block w-full">{{ old('bio', optional($user->profile)->bio) }}</textarea>
-            <x-input-error class="mt-2" :messages="$errors->get('bio')" />
-        </div>
-
-        <div>
-            <x-input-label for="website" :value="__('Website')" />
-            <x-text-input id="website" name="website" type="text" class="mt-1 block w-full" :value="old('website', optional($user->profile)->website)" />
-            <x-input-error class="mt-2" :messages="$errors->get('website')" />
-        </div>
-
-        <div>
-            <x-input-label for="twitter_handle" :value="__('Twitter Handle')" />
-            <x-text-input id="twitter_handle" name="twitter_handle" type="text" class="mt-1 block w-full" :value="old('twitter_handle', optional($user->profile)->twitter_handle)" />
-            <x-input-error class="mt-2" :messages="$errors->get('twitter_handle')" />
-        </div>
-
-        <div>
-            <x-input-label for="github_handle" :value="__('GitHub Handle')" />
-            <x-text-input id="github_handle" name="github_handle" type="text" class="mt-1 block w-full" :value="old('github_handle', optional($user->profile)->github_handle)" />
-            <x-input-error class="mt-2" :messages="$errors->get('github_handle')" />
-        </div>
-
-        <div>
-            <x-input-label for="linkedin_url" :value="__('LinkedIn URL')" />
-            <x-text-input id="linkedin_url" name="linkedin_url" type="text" class="mt-1 block w-full" :value="old('linkedin_url', optional($user->profile)->linkedin_url)" />
-            <x-input-error class="mt-2" :messages="$errors->get('linkedin_url')" />
+        <!-- Product Updates -->
+        <div class="mt-4">
+            <label for="receives_product_updates" class="inline-flex items-center">
+                <input id="receives_product_updates" type="checkbox" class="rounded dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-indigo-600 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:focus:ring-offset-gray-800" name="receives_product_updates" value="1" {{ old('receives_product_updates', $user->receives_product_updates) ? 'checked' : '' }}>
+                <span class="ms-2 text-sm text-gray-600 dark:text-gray-400">{{ __('I would like to receive product updates and new features via email (no marketing/spam)') }}</span>
+            </label>
+            <x-input-error :messages="$errors->get('receives_product_updates')" class="mt-2" />
         </div>
 
         <div class="flex items-center gap-4">

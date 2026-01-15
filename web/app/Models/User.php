@@ -38,6 +38,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'provider_refresh_token',
         'notification_preferences',
         'plan',
+        'privacy_policy_accepted_at',
+        'receives_product_updates',
+        'product_updates_consent_at',
     ];
 
     public function profile()
@@ -131,6 +134,9 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'notification_preferences' => 'array',
+            'privacy_policy_accepted_at' => 'datetime',
+            'receives_product_updates' => 'boolean',
+            'product_updates_consent_at' => 'datetime',
         ];
     }
 }

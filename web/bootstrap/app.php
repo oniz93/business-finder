@@ -18,9 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // $middleware->web(append: [
-        //     App\Http\Middleware\Google2FAMiddleware::class,
-        // ]);
+        $middleware->web(append: [
+            \App\Http\Middleware\EnsurePrivacyPolicyIsAccepted::class,
+        ]);
 
         $middleware->alias([
             'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,

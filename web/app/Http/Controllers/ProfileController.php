@@ -26,18 +26,23 @@ class ProfileController extends Controller
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->user()->fill($request->validated());
+        $user = $request->user();
+        $oldConsent = $user->receives_product_updates;
+        
+        $user->fill($request->validated());
+        
+        // Handle boolean checkbox if missing from request
+        $user->receives_product_updates = $request->boolean('receives_product_updates');
 
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
+        if ($user->isDirty('email')) {
+            $user->email_verified_at = null;
+        }
+        
+        if ($user->receives_product_updates && !$oldConsent) {
+            $user->product_updates_consent_at = now();
         }
 
-        $request->user()->save();
-
-        $request->user()->profile()->updateOrCreate(
-            ['user_id' => $request->user()->id],
-            $request->validated()
-        );
+        $user->save();
 
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
     }

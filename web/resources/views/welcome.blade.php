@@ -316,6 +316,7 @@
                             <a href="{{ route('login') }}" class="hover:text-gray-300 transition-colors">Sign In</a>
                             <a href="{{ route('register') }}" class="hover:text-gray-300 transition-colors">Register</a>
                         @endguest
+                        <a href="https://www.iubenda.com/privacy-policy/22933065" class="iubenda-black iubenda-noiframe iubenda-embed iubenda-noiframe hover:text-gray-300 transition-colors" title="Privacy Policy ">Privacy Policy</a>
                     </div>
                 </div>
             </div>
