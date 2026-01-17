@@ -35,14 +35,24 @@ class BusinessPlanController extends Controller
         return response()->json($plans);
     }
 
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
         $plan = $this->businessPlanDao->find($id);
 
         if (!$plan) {
             abort(404);
         }
-        
-        return view('business-plans.show', ['plan' => $plan]);
+
+        // Theme support - allows switching between different view templates
+        $theme = $request->query('theme');
+        $validThemes = ['classic'];
+
+        if ($theme && in_array($theme, $validThemes)) {
+            $viewName = "business-plans.show-{$theme}";
+        } else {
+            $viewName = 'business-plans.show';
+        }
+
+        return view($viewName, ['plan' => $plan, 'currentTheme' => $theme]);
     }
 }
